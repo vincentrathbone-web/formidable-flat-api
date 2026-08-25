@@ -151,4 +151,4 @@ See [PLUGIN.md](PLUGIN.md) for REST endpoints, query builder, calculated columns
 
 ---
 
-**License:** Source-available — © Controll IT Systems (Pty) Ltd. All rights reserved. This repository is published for demonstration purposes; it is not licensed for redistribution or resale.
+**License:** Source-available — © Controll IT Systems (Pty) Ltd. All rights reserved. This repository is published for demonstration purposes; it is not licensed for redistribution or resale. See [LICENSE](LICENSE) for full terms.
