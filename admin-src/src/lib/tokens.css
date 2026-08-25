@@ -1,0 +1,175 @@
+/* Design tokens — derived from ../../../DESIGN.md (Notion-marketing token extraction),
+   the same source the DMR dashboard's .ffapi-dash styling already uses, so this rebuild
+   is visually coherent with the rest of the plugin rather than a second design
+   language. Matches the approved interface mockup (horizontal tabs, per-query export
+   popover, vertical field picker, insert-field formula builder). */
+
+.ffapi-svelte-root {
+  --ffapi-bg: #f6f5f4;
+  --ffapi-surface: #ffffff;
+  --ffapi-surface-sunken: #f0eeec;
+  --ffapi-header-bg: #ffffff;
+  --ffapi-text-primary: #17181c;
+  --ffapi-text-medium: #615d59;
+  --ffapi-text-muted: #a39e98;
+  --ffapi-border: rgba(0, 0, 0, 0.08);
+  --ffapi-border-strong: rgba(0, 0, 0, 0.14);
+  --ffapi-brand: #2537b1;
+  --ffapi-brand-hover: #1c2c8f;
+  --ffapi-brand-wash: rgba(37, 55, 177, 0.08);
+  --ffapi-accent-blue: #097fe8;
+  --ffapi-danger: #f64932;
+  --ffapi-danger-bg: #fdecea;
+  --ffapi-success: #1a8a5f;
+  --ffapi-success-bg: #e8f6ef;
+  --ffapi-warning: #b4790a;
+  --ffapi-warning-bg: #fdf3df;
+  --ffapi-shadow-card: 0 1px 2px rgba(2, 9, 58, 0.04), 0 1px 6px rgba(2, 9, 58, 0.05);
+  --ffapi-shadow-pop: 0 10px 28px rgba(2, 9, 58, 0.14), 0 2px 8px rgba(2, 9, 58, 0.08);
+  --ffapi-radius-sm: 4px;
+  --ffapi-radius-base: 6px;
+  --ffapi-radius-card: 8px;
+  --ffapi-radius-lg: 12px;
+  --ffapi-radius-pill: 9999px;
+  --ffapi-font-ui: NotionInter, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --ffapi-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ffapi-svelte-root:not([data-theme='light']) {
+    --ffapi-bg: #0b0e1f;
+    --ffapi-surface: #12162e;
+    --ffapi-surface-sunken: #0e1226;
+    --ffapi-header-bg: #0e1230;
+    --ffapi-text-primary: #eef0f8;
+    --ffapi-text-medium: #b3b6cf;
+    --ffapi-text-muted: #7c81a6;
+    --ffapi-border: rgba(255, 255, 255, 0.09);
+    --ffapi-border-strong: rgba(255, 255, 255, 0.16);
+    --ffapi-brand: #5c74e6;
+    --ffapi-brand-hover: #7488ec;
+    --ffapi-brand-wash: rgba(92, 116, 230, 0.14);
+    --ffapi-accent-blue: #4aa8ff;
+    --ffapi-danger: #ff7361;
+    --ffapi-danger-bg: #3a1a19;
+    --ffapi-success: #3fcf95;
+    --ffapi-success-bg: #12301f;
+    --ffapi-warning: #e0aa3f;
+    --ffapi-warning-bg: #362a10;
+    --ffapi-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 8px rgba(0, 0, 0, 0.35);
+    --ffapi-shadow-pop: 0 14px 34px rgba(0, 0, 0, 0.55);
+  }
+}
+
+.ffapi-svelte-root[data-theme='dark'] {
+  --ffapi-bg: #0b0e1f;
+  --ffapi-surface: #12162e;
+  --ffapi-surface-sunken: #0e1226;
+  --ffapi-header-bg: #0e1230;
+  --ffapi-text-primary: #eef0f8;
+  --ffapi-text-medium: #b3b6cf;
+  --ffapi-text-muted: #7c81a6;
+  --ffapi-border: rgba(255, 255, 255, 0.09);
+  --ffapi-border-strong: rgba(255, 255, 255, 0.16);
+  --ffapi-brand: #5c74e6;
+  --ffapi-brand-hover: #7488ec;
+  --ffapi-brand-wash: rgba(92, 116, 230, 0.14);
+  --ffapi-accent-blue: #4aa8ff;
+  --ffapi-danger: #ff7361;
+  --ffapi-danger-bg: #3a1a19;
+  --ffapi-success: #3fcf95;
+  --ffapi-success-bg: #12301f;
+  --ffapi-warning: #e0aa3f;
+  --ffapi-warning-bg: #362a10;
+  --ffapi-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 8px rgba(0, 0, 0, 0.35);
+  --ffapi-shadow-pop: 0 14px 34px rgba(0, 0, 0, 0.55);
+}
+
+.ffapi-svelte-root {
+  font-family: var(--ffapi-font-ui);
+  color: var(--ffapi-text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ffapi-svelte-root * { box-sizing: border-box; }
+.ffapi-svelte-root button { font-family: inherit; }
+.ffapi-svelte-root :focus-visible { outline: 2px solid var(--ffapi-accent-blue); outline-offset: 2px; }
+
+.ffapi-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: var(--ffapi-radius-base); border: 1px solid var(--ffapi-border-strong);
+  background: var(--ffapi-surface); color: var(--ffapi-text-primary);
+  font-size: 13px; font-weight: 500; padding: 7px 13px; cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
+}
+.ffapi-btn:hover { background: var(--ffapi-surface-sunken); }
+.ffapi-btn:active { transform: translateY(1px); }
+.ffapi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ffapi-btn-primary { background: var(--ffapi-brand); border-color: var(--ffapi-brand); color: #fff; }
+.ffapi-btn-primary:hover { background: var(--ffapi-brand-hover); }
+.ffapi-btn-danger-ghost { color: var(--ffapi-danger); border-color: transparent; background: none; }
+.ffapi-btn-danger-ghost:hover { background: var(--ffapi-danger-bg); }
+.ffapi-btn-ghost { border-color: transparent; background: none; }
+.ffapi-btn-ghost:hover { background: var(--ffapi-surface-sunken); }
+.ffapi-btn-sm { padding: 5px 10px; font-size: 12px; }
+.ffapi-btn-icon { padding: 6px; width: 30px; height: 30px; justify-content: center; }
+
+.ffapi-card {
+  background: var(--ffapi-surface); border: 1px solid var(--ffapi-border); border-radius: var(--ffapi-radius-card);
+  box-shadow: var(--ffapi-shadow-card);
+}
+.ffapi-card + .ffapi-card { margin-top: 16px; }
+.ffapi-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid var(--ffapi-border);
+}
+.ffapi-card-head h2 { font-size: 14.5px; font-weight: 600; margin: 0; }
+.ffapi-card-head p { margin: 2px 0 0; font-size: 12px; color: var(--ffapi-text-muted); }
+.ffapi-card-body { padding: 18px; }
+
+.ffapi-pill {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: var(--ffapi-radius-pill); letter-spacing: 0.1px;
+}
+.ffapi-pill-success { background: var(--ffapi-success-bg); color: var(--ffapi-success); }
+.ffapi-pill-warning { background: var(--ffapi-warning-bg); color: var(--ffapi-warning); }
+
+.ffapi-code, .ffapi-mono { font-family: var(--ffapi-font-mono); font-variant-numeric: tabular-nums; }
+.ffapi-code-row {
+  display: flex; align-items: center; gap: 8px; background: var(--ffapi-surface-sunken);
+  border: 1px solid var(--ffapi-border); border-radius: var(--ffapi-radius-base); padding: 8px 10px;
+}
+.ffapi-code-row code { flex: 1; font-size: 12px; color: var(--ffapi-text-primary); overflow-x: auto; white-space: nowrap; }
+
+.ffapi-data-table { width: 100%; border-collapse: collapse; }
+.ffapi-data-table th {
+  text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--ffapi-text-muted); padding: 8px 10px; border-bottom: 1px solid var(--ffapi-border);
+}
+.ffapi-data-table td { padding: 11px 10px; border-bottom: 1px solid var(--ffapi-border); font-size: 13px; vertical-align: middle; }
+.ffapi-data-table tr:last-child td { border-bottom: none; }
+.ffapi-data-table tr:hover td { background: var(--ffapi-surface-sunken); }
+
+.ffapi-field-label { font-size: 12px; font-weight: 600; color: var(--ffapi-text-medium); margin-bottom: 6px; display: block; }
+.ffapi-svelte-root select,
+.ffapi-svelte-root input[type='text'],
+.ffapi-svelte-root input[type='number'] {
+  font-family: inherit; font-size: 13px; padding: 7px 10px; border-radius: var(--ffapi-radius-base);
+  border: 1px solid var(--ffapi-border-strong); background: var(--ffapi-surface); color: var(--ffapi-text-primary); width: 100%;
+}
+.ffapi-svelte-root select:focus,
+.ffapi-svelte-root input:focus { outline: 2px solid var(--ffapi-accent-blue); outline-offset: -1px; border-color: var(--ffapi-accent-blue); }
+
+.ffapi-hint { font-size: 12px; color: var(--ffapi-text-muted); margin: 6px 0 0; }
+.ffapi-muted { color: var(--ffapi-text-muted); }
+.ffapi-kbd { font-family: var(--ffapi-font-mono); font-size: 11px; background: var(--ffapi-surface-sunken); border: 1px solid var(--ffapi-border-strong); border-radius: 4px; padding: 1px 5px; }
+
+.ffapi-toast-host { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+.ffapi-toast {
+  background: var(--ffapi-text-primary); color: var(--ffapi-bg); padding: 10px 16px; border-radius: var(--ffapi-radius-base);
+  font-size: 12.5px; font-weight: 500; box-shadow: var(--ffapi-shadow-pop); opacity: 0; transform: translateY(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.ffapi-toast.show { opacity: 1; transform: translateY(0); }

@@ -1,0 +1,19 @@
+{
+  "name": "formidable-flat-api-admin",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Svelte source for the Formidable Flat API admin UI (query builder, saved queries, credentials, shortcodes, endpoint builder). Builds to ../dist — see ../CLAUDE.md.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "svelte": "^5.0.0",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "svelte-multiselect": "^11.8.0"
+  }
+}

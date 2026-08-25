@@ -1,0 +1,16 @@
+# Release ZIPs (kept as local release history, not in source control)
+*.zip
+
+# Node dependencies
+admin-src/node_modules/
+
+# Claude Code internal files
+.claude/
+
+# Client data / confidential examples (never commit)
+Flat Tables Examples/
+Reports Examples/
+
+# Local-only working notes
+calc-bugs.md
+harden-security-plan.md

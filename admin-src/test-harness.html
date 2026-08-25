@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FFAPI Admin — Test Harness</title>
+<link rel="stylesheet" href="../dist/admin.css">
+<style>body { margin: 0; background: #f6f5f4; font-family: sans-serif; }</style>
+</head>
+<body>
+<div id="ffapi-admin-app"></div>
+<script>
+window.ffapiAdmin = {
+  ajaxUrl: 'about:blank#ajax',
+  adminUrl: 'about:blank#admin/',
+  restBase: 'https://example.com/wp-json/formidable-flat/v1',
+  version: '2.30.0-test',
+  tab: 'queries',
+  queries: [
+    { slug: 'gravimetric-sampling', label: 'Gravimetric sampling', tables: [{form_id:3,key_field_id:14},{form_id:20,key_field_id:175},{form_id:6,key_field_id:32}], joins: [{query_slug:'a',left_key:'x',right_key:'y',match:'first'},{query_slug:'b',left_key:'x',right_key:'y',match:'first'}], selected_fields: ['Concern','HEG','Filter'], column_order: [{label:'Concern',alias:''},{label:'HEG',alias:''},{label:'Filter',alias:'Sample ID'}] },
+    { slug: 'pump-flowrates', label: 'Pump Flowrates', tables: [{form_id:2,key_field_id:7}], joins: [], selected_fields: ['Filter'], column_order: [] },
+  ],
+  forms: [ { id: 3, name: 'Gravimetric Sampling' }, { id: 20, name: 'Mid-shift Inspections' }, { id: 6, name: 'End-of-shift Details' } ],
+  apiKey: 'FFAPI_9c1e2b6a4d7f0834a1b2c3d4e5f6a7b8',
+  fontSize: 11,
+  theme: 'simple',
+  calcFunctions: { ROUND: [1,2], ABS: [1,1], MIN: [1,null], MAX: [1,null], SUM: [1,null], LEN: [1,1], CONCAT: [1,null], UPPER: [1,1], LOWER: [1,1], TRIM: [1,1] },
+  nonces: { saveQuery: 'x', deleteQuery: 'x', duplicateQuery: 'x', regenerateKey: 'x', saveFontSize: 'x', saveTheme: 'x' },
+  dmrReportsUrl: '#dmr-reports',
+};
+</script>
+<script src="../dist/admin.js"></script>
+</body>
+</html>

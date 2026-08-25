@@ -1,0 +1,459 @@
+/**
+ * Formidable Flat API – Table View Styles
+ * Version: 2.6.1
+ * Scoped under .ffapi-table-container to avoid theme conflicts.
+ */
+
+/* ── Design tokens ──
+ * EVERY colour in this file is driven by one of these variables, and every coloured rule
+ * reads it as `var(--token) !important`. That means a site can restyle ANY component just by
+ * redefining the token in custom CSS on the container — no need to out-`!important` us:
+ *
+ *     .ffapi-table-container { --ffapi-header-bg:#123; --ffapi-header-text:#fff; }
+ *     #ffapi-tbl-2-my-slug   { --ffapi-accent:#e11d48; }   (a single instance)
+ *
+ * Two ready-made schemes ship in: `.ffapi-theme-light` (default) and `.ffapi-theme-dark`,
+ * chosen via the shortcode's theme="light|dark" attribute. Structural tokens (radius/shadow)
+ * are shared; only colours change per scheme.
+ */
+.ffapi-table-container {
+    --ffapi-radius: 8px;
+    --ffapi-shadow: 0 2px 6px rgba(0,0,0,.07), 0 6px 24px rgba(0,0,0,.07);
+
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--ffapi-text);
+    margin: 16px 0 24px;
+    box-sizing: border-box;
+    width: 100%;
+    /* Respect the parent (an Elementor flexbox column, a grid cell, etc.) — NOT 90vw, which
+       let the table blow out to viewport width inside a narrow column. min-width:0 lets it
+       shrink as a flex item instead of forcing the row to wrap (a flex item defaults to
+       min-width:auto = its content's intrinsic width, which a wide table makes huge). Very wide
+       tables scroll inside .ffapi-tbl-wrapper (overflow-x:auto), so they never overflow here. */
+    max-width: 100%;
+    min-width: 0;
+
+    border-radius: var(--ffapi-radius);
+    box-shadow: var(--ffapi-shadow);
+    border: 1px solid var(--ffapi-border);
+    background: var(--ffapi-card-bg);
+    overflow: hidden;
+}
+
+/* Light scheme (default). Neutral header — no more hardcoded red. */
+.ffapi-table-container,
+.ffapi-table-container.ffapi-theme-light {
+    --ffapi-accent:              #3b82f6;
+    --ffapi-accent-dark:         #1d4ed8;
+    --ffapi-accent-light:        #eff6ff;
+    --ffapi-card-bg:             #ffffff;
+    --ffapi-toolbar-bg:          #f8fafc;
+    --ffapi-header-bg:           #f1f5f9;
+    --ffapi-header-text:         #1e293b;
+    --ffapi-header-border:       #e2e8f0;
+    --ffapi-header-hover:        #e2e8f0;
+    --ffapi-border:              #e5e7eb;
+    --ffapi-row-even:            #ffffff;
+    --ffapi-row-odd:             #f9fafb;
+    --ffapi-row-hover:           #eff6ff;
+    --ffapi-text:                #1f2937;
+    --ffapi-text-muted:          #64748b;
+    --ffapi-sorter:              #94a3b8;
+    --ffapi-sorter-active:       #3b82f6;
+    --ffapi-footer-bg:           #f8fafc;
+    --ffapi-page-bg:             #ffffff;
+    --ffapi-page-text:           #1f2937;
+    --ffapi-page-disabled-bg:    #f1f5f9;
+    --ffapi-page-disabled-border:#e2e8f0;
+    --ffapi-page-disabled-text:  #cbd5e1;
+    --ffapi-input-bg:            #f8fafc;
+    --ffapi-input-focus-bg:      #ffffff;
+}
+
+/* Dark scheme. */
+.ffapi-table-container.ffapi-theme-dark {
+    --ffapi-accent:              #60a5fa;
+    --ffapi-accent-dark:         #3b82f6;
+    --ffapi-accent-light:        rgba(96,165,250,0.15);
+    --ffapi-card-bg:             #1f2937;
+    --ffapi-toolbar-bg:          #111827;
+    --ffapi-header-bg:           #111827;
+    --ffapi-header-text:         #f1f5f9;
+    --ffapi-header-border:       #374151;
+    --ffapi-header-hover:        #263548;
+    --ffapi-border:              #374151;
+    --ffapi-row-even:            #1f2937;
+    --ffapi-row-odd:             #1a2432;
+    --ffapi-row-hover:           #263548;
+    --ffapi-text:                #e5e7eb;
+    --ffapi-text-muted:          #94a3b8;
+    --ffapi-sorter:              #64748b;
+    --ffapi-sorter-active:       #93c5fd;
+    --ffapi-footer-bg:           #111827;
+    --ffapi-page-bg:             #1f2937;
+    --ffapi-page-text:           #e5e7eb;
+    --ffapi-page-disabled-bg:    #1a2432;
+    --ffapi-page-disabled-border:#374151;
+    --ffapi-page-disabled-text:  #4b5563;
+    --ffapi-input-bg:            #111827;
+    --ffapi-input-focus-bg:      #1f2937;
+}
+
+/* ── Toolbar ── */
+.ffapi-tbl-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    background: var(--ffapi-toolbar-bg);
+    border-bottom: 1px solid var(--ffapi-border);
+}
+
+.ffapi-tbl-search-wrap {
+    flex: 1;
+    min-width: 200px;
+    max-width: 360px;
+}
+
+.ffapi-tbl-search-input {
+    width: 100%;
+    padding: 8px 14px 8px 38px !important;
+    border: 1.5px solid var(--ffapi-border) !important;
+    border-radius: 999px !important;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.18s, box-shadow 0.18s;
+    background: var(--ffapi-input-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 12px center !important;
+    box-sizing: border-box;
+    color: var(--ffapi-text);
+}
+
+.ffapi-tbl-search-input:focus {
+    border-color: var(--ffapi-accent) !important;
+    background-color: var(--ffapi-input-focus-bg) !important;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.15) !important;
+}
+
+.ffapi-tbl-search-input::placeholder { color: var(--ffapi-text-muted); }
+
+.ffapi-tbl-info {
+    color: var(--ffapi-text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+    min-width: 80px;
+    font-weight: 500;
+}
+
+.ffapi-tbl-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+/* ── Toolbar Buttons ── */
+.ffapi-tbl-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none !important;
+    box-shadow: none !important;
+    transition: background 0.15s, color 0.15s, transform 0.1s;
+    white-space: nowrap;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+}
+
+.ffapi-tbl-btn-csv {
+    background: #ecfdf5;
+    color: #065f46;
+}
+.ffapi-tbl-btn-csv:hover:not(:disabled) {
+    background: #d1fae5;
+    color: #064e3b;
+    transform: translateY(-1px);
+}
+
+.ffapi-tbl-btn-xlsx {
+    background: #f0fdf4;
+    color: #166534;
+}
+.ffapi-tbl-btn-xlsx:hover:not(:disabled) {
+    background: #bbf7d0;
+    color: #14532d;
+    transform: translateY(-1px);
+}
+
+.ffapi-tbl-btn-print {
+    background: var(--ffapi-accent-light);
+    color: var(--ffapi-accent-dark);
+}
+.ffapi-tbl-btn-print:hover:not(:disabled) {
+    background: #dbeafe;
+    color: var(--ffapi-accent-dark);
+    transform: translateY(-1px);
+}
+
+.ffapi-tbl-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none;
+}
+
+/* ── Status / Loading / Error ── */
+.ffapi-tbl-status {
+    padding: 28px;
+    text-align: center;
+    color: var(--ffapi-text-muted);
+    font-size: 13px;
+    font-style: italic;
+    background: var(--ffapi-footer-bg);
+}
+
+.ffapi-tbl-error {
+    padding: 16px;
+    text-align: center;
+    color: #b91c1c;
+    font-size: 13px;
+    background: #fef2f2;
+}
+
+.ffapi-tbl-empty {
+    padding: 28px;
+    text-align: center;
+    color: var(--ffapi-text-muted);
+    font-size: 13px;
+    font-style: italic;
+}
+
+/* ── Table Wrapper (horizontal scroll) ── */
+.ffapi-tbl-wrapper {
+    overflow-x: auto;
+}
+
+/* ── Tabulator Overrides ── */
+.ffapi-tbl-wrapper .tabulator {
+    border: none !important;
+    border-radius: 0 !important;
+    font-family: inherit !important;
+    font-size: 13px;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Header — background on wrapper + columns, inner elements transparent */
+.ffapi-tbl-wrapper .tabulator .tabulator-header,
+.ffapi-tbl-wrapper .tabulator .tabulator-header-contents,
+.ffapi-tbl-wrapper .tabulator .tabulator-headers,
+.ffapi-tbl-wrapper .tabulator .tabulator-col {
+    background-color: var(--ffapi-header-bg) !important;
+    font-family: inherit !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col {
+    border-bottom: 2px solid var(--ffapi-header-border) !important;
+    border-right: 1px solid var(--ffapi-header-border) !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col-content,
+.ffapi-tbl-wrapper .tabulator .tabulator-col-title-holder,
+.ffapi-tbl-wrapper .tabulator .tabulator-col-title {
+    background-color: transparent !important;
+    color: var(--ffapi-header-text) !important;
+    font-family: inherit !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-header {
+    border-radius: 0 !important;
+    height: auto !important;
+    background-color: transparent !important;
+}
+
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col:last-child {
+    border-right: none !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col.tabulator-sortable:hover {
+    background: var(--ffapi-header-hover) !important;
+    cursor: pointer;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-header {
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-header-contents {
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-headers {
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col {
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col-resize-handle {
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col-content {
+    white-space: normal !important;
+    overflow: visible !important;
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col-title-holder {
+    white-space: normal !important;
+    text-wrap-mode: wrap !important;
+    overflow: visible !important;
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col-title {
+    padding: 10px 12px;
+    font-weight: 600;
+    font-size: 11.5px;
+    color: var(--ffapi-header-text) !important;
+    white-space: normal !important;
+    white-space-collapse: unset !important;
+    text-wrap-mode: wrap !important;
+    word-break: break-word;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    height: auto !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col .tabulator-col-sorter {
+    color: var(--ffapi-sorter);
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-col[aria-sort="ascending"] .tabulator-col-sorter,
+.ffapi-tbl-wrapper .tabulator .tabulator-col[aria-sort="descending"] .tabulator-col-sorter {
+    color: var(--ffapi-sorter-active);
+}
+
+/* Rows */
+.ffapi-tbl-wrapper .tabulator .tabulator-row {
+    border-bottom: 1px solid var(--ffapi-border);
+    transition: background 0.1s;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-row:last-child {
+    border-bottom: none;
+}
+
+/* Row backgrounds — driven by tokens so the light/dark scheme (or a custom override) applies */
+.ffapi-tbl-wrapper .tabulator .tabulator-row:nth-child(even) .tabulator-cell {
+    background: var(--ffapi-row-even) !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-row:nth-child(odd) .tabulator-cell {
+    background: var(--ffapi-row-odd) !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-row:hover .tabulator-cell {
+    background: var(--ffapi-row-hover) !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-cell {
+    padding: 9px 12px;
+    border-right: 1px solid var(--ffapi-border); /* Keep border, transparency is handled by background */
+    color: var(--ffapi-text); /* Inherits theme text color */
+    font-size: 13px; /* Font size is okay, inherited family is preferred */
+    vertical-align: top;
+    line-height: 1.5;
+    white-space: normal !important;
+    word-break: break-word;
+    overflow: visible !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-cell:last-child {
+    border-right: none;
+}
+
+/* Placeholder */
+.ffapi-tbl-wrapper .tabulator .tabulator-placeholder {
+    padding: 28px;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-placeholder-contents {
+    color: var(--ffapi-text-muted);
+    font-style: italic;
+    font-size: 13px;
+}
+
+/* ── Pagination ── */
+.ffapi-tbl-wrapper .tabulator .tabulator-footer {
+    border-top: 1px solid var(--ffapi-border) !important;
+    background: var(--ffapi-footer-bg) !important;
+    padding: 8px 14px;
+    font-size: 12px;
+    border-radius: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    box-shadow: none !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-footer .tabulator-page-size {
+    display: none;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-footer .tabulator-page {
+    background: var(--ffapi-page-bg) !important;
+    border: 1.5px solid var(--ffapi-border) !important;
+    border-radius: 999px !important;
+    padding: 3px 10px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    color: var(--ffapi-text) !important;
+    min-width: 30px !important;
+    text-align: center !important;
+    box-shadow: none !important;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-footer .tabulator-page.active {
+    background: var(--ffapi-accent) !important;
+    border-color: var(--ffapi-accent) !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 6px rgba(59,130,246,.35) !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-footer .tabulator-page:hover:not(.active):not([disabled]) {
+    background: var(--ffapi-accent-light) !important;
+    border-color: var(--ffapi-accent) !important;
+    color: var(--ffapi-accent) !important;
+    box-shadow: none !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-footer .tabulator-page[disabled] {
+    background: var(--ffapi-page-disabled-bg) !important;
+    border-color: var(--ffapi-page-disabled-border) !important;
+    color: var(--ffapi-page-disabled-text) !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    cursor: not-allowed !important;
+}
+
+.ffapi-tbl-wrapper .tabulator .tabulator-pages {
+    display: flex;
+    gap: 4px;
+}

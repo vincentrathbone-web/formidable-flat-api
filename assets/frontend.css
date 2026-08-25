@@ -1,0 +1,42 @@
+/**
+ * Formidable Flat API - Frontend Styles
+ * Version: 2.1.0
+ */
+
+/* Button styling - inherits Elementor classes for theme consistency */
+.ffapi-frontend-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ffapi-frontend-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Icon styling */
+.ffapi-frontend-icon {
+    display: inline-block;
+    font-size: 24px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    user-select: none;
+}
+
+.ffapi-frontend-icon:hover {
+    transform: scale(1.2);
+}
+
+/* Loading state */
+.ffapi-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.ffapi-loading::after {
+    content: '⏳';
+    margin-left: 4px;
+}
