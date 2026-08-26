@@ -899,6 +899,7 @@
           <span>Showing {previewRows.length.toLocaleString()} of <b class="ffapi-mono">{stageCounts.after_filter.toLocaleString()}</b> rows</span>
         {/if}
         <button class="ffapi-btn ffapi-btn-sm" onclick={runPreview} disabled={previewing}>{previewing ? 'Loading…' : '↻ Refresh now'}</button>
+        <button class="ffapi-btn ffapi-btn-sm ffapi-btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Query'}</button>
       </div>
     </div>
 
