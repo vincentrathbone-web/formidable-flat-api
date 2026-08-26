@@ -1,6 +1,6 @@
 # Formidable Flat API — Reference
 
-**v3.2.1** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
+**v3.2.2** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
 
 ---
 
@@ -146,6 +146,11 @@ Both require a logged-in WordPress session. Theme tokens are CSS variables on `.
 ---
 
 ## Changelog
+
+### 3.2.2
+- Fixed: the "match my" and nearest-before "my" date-field pickers listed every field from every source table and joined query as one flat list, indistinguishable when two sources share a field name (e.g. "Pump" from two different forms). Both now group their options by table/query source.
+- Fixed: combining two existing queries via step 1b alone (no source table) required clicking "+ Add join" twice — the first click only produced a bare query picker with no way to actually join it to anything, reading as if it required a source table. One click now sets up both the starting query and its match row together, ready to configure.
+- Fixed: each join row's remove (×) button could drift away from the row's corner when its controls wrapped onto multiple lines (e.g. a "nearest before" join's extra fields). It's now anchored to the top-right corner of the row regardless of wrapping.
 
 ### 3.2.1
 - Added: query-to-query joins now have a "keeping" control next to the match-mode picker — `left` (default, unchanged from before), `inner`, `right`, or `full outer` — so which unmatched rows survive a join is an explicit choice instead of always-left-join-only. The row-count banner under each join now shows live matched / no-match counts for every join (previously only worked for "nearest before"), plus a "+N theirs-only" count for right/full joins.
