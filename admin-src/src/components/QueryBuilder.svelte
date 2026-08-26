@@ -393,7 +393,7 @@
     previewing = true;
     try {
       const def = buildQueryDef();
-      const { rows, sample, stage_counts } = await previewQuery(def, 10);
+      const { rows, sample, stage_counts } = await previewQuery(def, 100);
       previewRows = rows || [];
       previewSample = sample || null;
       stageCounts = stage_counts || null;
@@ -552,14 +552,14 @@
           <input
             bind:value={label}
             placeholder="Query name"
-            style="font-size:14.5px; font-weight:600; border:none; padding:2px 0; width:auto; min-width:220px;"
+            style="font-size: 13px; font-weight:600; border:none; padding:2px 0; width:auto; min-width:220px;"
           />
           <div class="ffapi-slug-row">
-            <span class="ffapi-muted" style="font-size:11.5px;">slug:</span>
+            <span class="ffapi-muted" style="font-size: 11px;">slug:</span>
             <code class="ffapi-slug-display ffapi-mono">{querySlug || slugify(label) || '—'}</code>
-            {#if !slug}<span class="ffapi-muted" style="font-size:10.5px;">(auto-generated from name)</span>{/if}
+            {#if !slug}<span class="ffapi-muted" style="font-size: 11px;">(auto-generated from name)</span>{/if}
           </div>
-          <p>{tables.length} source table{tables.length === 1 ? '' : 's'} · {selected.size} fields selected</p>
+          <p class="ffapi-hint" style="margin-top:4px;">{tables.length} source table{tables.length === 1 ? '' : 's'} · {selected.size} fields selected</p>
         </div>
         <button class="ffapi-btn ffapi-btn-sm ffapi-btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Query'}</button>
       </div>
@@ -608,7 +608,7 @@
       </div>
 
       <div class="ffapi-builder-section">
-        <p class="ffapi-section-title"><span class="ffapi-step-num">1b</span> Join other saved queries <span class="ffapi-muted" style="font-weight:400; font-size:12px;">— optional</span></p>
+        <p class="ffapi-section-title"><span class="ffapi-step-num">1b</span> Join other saved queries <span class="ffapi-muted" style="font-weight:400; font-size: 13px;">— optional</span></p>
         {#each joins as j, ji}
           <div class="ffapi-join-row">
             <select value={j.query_slug} onchange={(e) => updateJoin(ji, { query_slug: e.target.value })}>
@@ -686,7 +686,7 @@
       </div>
 
       <div class="ffapi-builder-section">
-        <p class="ffapi-section-title"><span class="ffapi-step-num">2</span> Fields <span class="ffapi-muted" style="font-weight:400; font-size:12px;">— {selected.size} selected</span></p>
+        <p class="ffapi-section-title"><span class="ffapi-step-num">2</span> Fields <span class="ffapi-muted" style="font-weight:400; font-size: 13px;">— {selected.size} selected</span></p>
         <div class="ffapi-field-groups">
           {#each [...groupedFields()] as [gId, group] (gId)}
             {@const groupKey = 'form-' + gId}
@@ -748,7 +748,7 @@
       </div>
 
       <div class="ffapi-builder-section">
-        <p class="ffapi-section-title"><span class="ffapi-step-num">3</span> Column order &amp; aliases <span class="ffapi-muted" style="font-weight:400; font-size:12px;">— drag to reorder</span></p>
+        <p class="ffapi-section-title"><span class="ffapi-step-num">3</span> Column order &amp; aliases <span class="ffapi-muted" style="font-weight:400; font-size: 13px;">— drag to reorder</span></p>
         <div class="ffapi-order-list" role="list">
           {#each columnOrder as c, i}
             <div class="ffapi-order-chip" role="listitem" draggable="true"
@@ -936,7 +936,10 @@
 </section>
 
 <style>
-  .ffapi-split { display: flex; flex-direction: column; }
+  /* Two sizes only, everywhere in this component: 13px for body/label content, 11px for
+     meta/caption text. Hierarchy comes from font-weight and color, not a third size —
+     this line is the fallback for anything that doesn't set its own font-size. */
+  .ffapi-split { display: flex; flex-direction: column; font-size: 13px; }
 
   .ffapi-split-top { overflow-y: auto; border-radius: var(--ffapi-radius-card) var(--ffapi-radius-card) 0 0; }
   .ffapi-split-top .ffapi-card { border-radius: var(--ffapi-radius-card) var(--ffapi-radius-card) 0 0; border-bottom: none; }
@@ -955,12 +958,12 @@
     overflow-x: auto; flex: none;
   }
   .ffapi-flow-node { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; min-width: 108px; }
-  .ffapi-flow-n { font-family: var(--ffapi-font-mono); font-weight: 700; font-size: 16px; color: #fff; font-variant-numeric: tabular-nums; }
-  .ffapi-flow-l { font-size: 9.5px; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.4px; }
-  .ffapi-flow-delta { font-size: 9.5px; font-weight: 700; margin-top: 1px; white-space: nowrap; }
+  .ffapi-flow-n { font-family: var(--ffapi-font-mono); font-weight: 700; font-size: 13px; color: #fff; font-variant-numeric: tabular-nums; }
+  .ffapi-flow-l { font-size: 11px; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.4px; }
+  .ffapi-flow-delta { font-size: 11px; font-weight: 700; margin-top: 1px; white-space: nowrap; }
   .ffapi-flow-delta.down { color: #ffb27a; }
   .ffapi-flow-delta.flat { color: rgba(255,255,255,0.55); }
-  .ffapi-flow-arrow { color: rgba(255,255,255,0.3); font-size: 15px; padding: 0 14px; flex-shrink: 0; }
+  .ffapi-flow-arrow { color: rgba(255,255,255,0.3); font-size: 13px; padding: 0 14px; flex-shrink: 0; }
 
   .ffapi-preview-zone {
     background: var(--ffapi-surface); border: 1px solid var(--ffapi-border); border-top: none;
@@ -980,7 +983,7 @@
     0%, 100% { box-shadow: 0 0 0 3px var(--ffapi-success-bg); }
     50% { box-shadow: 0 0 0 6px var(--ffapi-success-bg); }
   }
-  .ffapi-pt-right { display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: var(--ffapi-text-muted); }
+  .ffapi-pt-right { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--ffapi-text-muted); }
 
   .ffapi-grid-scroll { overflow: auto; flex: 1; max-height: 520px; }
   table.ffapi-big-grid { width: 100%; border-collapse: collapse; }
@@ -991,11 +994,11 @@
   }
   table.ffapi-big-grid thead th:last-child { border-right: none; }
   .ffapi-col-type {
-    font-size: 9px; color: var(--ffapi-text-muted); font-weight: 700; margin-right: 6px;
+    font-size: 11px; color: var(--ffapi-text-muted); font-weight: 700; margin-right: 6px;
     background: var(--ffapi-surface); border-radius: 3px; padding: 1px 4px;
   }
   table.ffapi-big-grid tbody td {
-    padding: 8px 12px; font-size: 12.5px; border-bottom: 1px solid var(--ffapi-border); border-right: 1px solid var(--ffapi-border);
+    padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--ffapi-border); border-right: 1px solid var(--ffapi-border);
     white-space: nowrap;
   }
   table.ffapi-big-grid tbody td:last-child { border-right: none; }
@@ -1006,13 +1009,13 @@
   .ffapi-status-bar {
     display: flex; align-items: center; justify-content: space-between; padding: 8px 18px;
     border-top: 1px solid var(--ffapi-border); background: var(--ffapi-surface-sunken);
-    font-size: 11.5px; color: var(--ffapi-text-medium); flex: none;
+    font-size: 11px; color: var(--ffapi-text-medium); flex: none;
   }
 
   .ffapi-impact-banner {
     margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     background: var(--ffapi-surface-sunken); border: 1px solid var(--ffapi-border); border-radius: var(--ffapi-radius-base);
-    padding: 9px 12px; font-size: 12.5px;
+    padding: 9px 12px; font-size: 13px;
   }
   .ffapi-impact-before { color: var(--ffapi-text-muted); }
   .ffapi-impact-after { font-weight: 700; }
@@ -1021,7 +1024,7 @@
     font-family: var(--ffapi-font-mono); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--ffapi-radius-pill);
   }
   .ffapi-delta-down { color: var(--ffapi-warning); background: var(--ffapi-warning-bg); }
-  .ffapi-join-match-split { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: 11.5px; }
+  .ffapi-join-match-split { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: 11px; }
   .ffapi-ms-ok { color: var(--ffapi-success); }
   .ffapi-ms-warn { color: var(--ffapi-warning); }
 
@@ -1035,10 +1038,10 @@
   .ffapi-table-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .ffapi-chip {
     display: inline-flex; align-items: center; gap: 8px; background: var(--ffapi-surface-sunken);
-    border: 1px solid var(--ffapi-border); border-radius: var(--ffapi-radius-base); padding: 6px 10px; font-size: 12.5px;
+    border: 1px solid var(--ffapi-border); border-radius: var(--ffapi-radius-base); padding: 6px 10px; font-size: 13px;
   }
   .ffapi-chip-x {
-    cursor: pointer; color: var(--ffapi-text-muted); font-size: 14px; line-height: 1;
+    cursor: pointer; color: var(--ffapi-text-muted); font-size: 13px; line-height: 1;
     background: none; border: none; padding: 0; font-family: inherit;
   }
   .ffapi-chip-x:hover { color: var(--ffapi-danger); }
@@ -1048,13 +1051,13 @@
     padding: 10px; background: var(--ffapi-surface-sunken); border: 1px solid var(--ffapi-border);
     border-radius: var(--ffapi-radius-base);
   }
-  .ffapi-join-row select { width: auto; font-size: 12.5px; padding: 5px 8px; }
+  .ffapi-join-row select { width: auto; font-size: 13px; padding: 5px 8px; }
 
   .ffapi-key-picker { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-  .ffapi-key-picker-label { font-size: 12px; width: 160px; flex: none; }
-  .ffapi-key-signature { font-size: 12px; word-break: break-word; }
+  .ffapi-key-picker-label { font-size: 13px; width: 160px; flex: none; }
+  .ffapi-key-signature { font-size: 13px; word-break: break-word; }
   .ffapi-match-badge {
-    font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; flex: none;
+    font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; flex: none;
     white-space: nowrap;
   }
   .ffapi-match-yes { color: var(--ffapi-success); background: color-mix(in srgb, var(--ffapi-success) 14%, transparent); }
@@ -1070,9 +1073,9 @@
   }
   .ffapi-fg-name { font-weight: 600; }
   .ffapi-form-id {
-    margin-left: 6px; color: var(--ffapi-text-muted); font-size: 10.5px; font-weight: 500;
+    margin-left: 6px; color: var(--ffapi-text-muted); font-size: 11px; font-weight: 500;
   }
-  .ffapi-fg-meta { display: flex; align-items: center; gap: 10px; color: var(--ffapi-text-muted); font-size: 11.5px; }
+  .ffapi-fg-meta { display: flex; align-items: center; gap: 10px; color: var(--ffapi-text-muted); font-size: 11px; }
   .ffapi-chev { transition: transform 0.14s ease; color: var(--ffapi-text-muted); }
   .ffapi-field-group.collapsed .ffapi-chev { transform: rotate(-90deg); }
   .ffapi-field-group.collapsed .ffapi-field-list { display: none; }
@@ -1081,47 +1084,47 @@
   .ffapi-field-check:hover { background: var(--ffapi-surface-sunken); }
   .ffapi-field-check input { width: auto; accent-color: var(--ffapi-brand); }
   .ffapi-field-text { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; }
-  .ffapi-field-source { color: var(--ffapi-text-muted); font-family: var(--ffapi-font-mono); font-size: 10.5px; }
+  .ffapi-field-source { color: var(--ffapi-text-muted); font-family: var(--ffapi-font-mono); font-size: 11px; }
   .ffapi-system-field { border-left: 2px solid color-mix(in srgb, var(--ffapi-brand) 45%, transparent); }
   .ffapi-legacy-group { border-color: color-mix(in srgb, var(--ffapi-danger) 35%, var(--ffapi-border)); }
   .ffapi-legacy-note {
-    margin: 4px 8px 6px; color: var(--ffapi-text-muted); font-size: 11.5px; line-height: 1.4;
+    margin: 4px 8px 6px; color: var(--ffapi-text-muted); font-size: 11px; line-height: 1.4;
   }
 
   .ffapi-order-list { display: flex; flex-direction: column; gap: 6px; }
   .ffapi-order-chip {
     display: flex; align-items: center; gap: 8px; background: var(--ffapi-surface); border: 1px solid var(--ffapi-border);
-    border-radius: var(--ffapi-radius-base); padding: 7px 10px; cursor: grab; font-size: 12.5px;
+    border-radius: var(--ffapi-radius-base); padding: 7px 10px; cursor: grab; font-size: 13px;
   }
-  .ffapi-drag-dots { color: var(--ffapi-text-muted); letter-spacing: 1px; font-size: 12px; }
+  .ffapi-drag-dots { color: var(--ffapi-text-muted); letter-spacing: 1px; font-size: 13px; }
   .ffapi-order-move {
-    background: none; border: none; color: var(--ffapi-text-muted); cursor: pointer; font-size: 9px;
+    background: none; border: none; color: var(--ffapi-text-muted); cursor: pointer; font-size: 11px;
     padding: 2px 3px; line-height: 1; font-family: inherit;
   }
   .ffapi-order-move:hover:not(:disabled) { color: var(--ffapi-brand); }
   .ffapi-order-move:disabled { opacity: 0.3; cursor: default; }
-  .ffapi-alias-input { width: 130px; font-size: 12px; padding: 3px 6px; }
+  .ffapi-alias-input { width: 130px; font-size: 13px; padding: 3px 6px; }
 
   .ffapi-filter-row { display: grid; grid-template-columns: 1fr 130px 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .ffapi-row-remove { background: none; border: none; color: var(--ffapi-text-muted); cursor: pointer; font-size: 16px; padding: 4px; }
+  .ffapi-row-remove { background: none; border: none; color: var(--ffapi-text-muted); cursor: pointer; font-size: 13px; padding: 4px; }
   .ffapi-row-remove:hover { color: var(--ffapi-danger); }
 
   .ffapi-calc-item { border: 1px solid var(--ffapi-border); border-radius: var(--ffapi-radius-base); padding: 12px; margin-bottom: 10px; }
   .ffapi-calc-item-top { display: grid; grid-template-columns: 180px 1fr auto; gap: 8px; align-items: center; }
   .ffapi-calc-insert-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
-  .ffapi-calc-insert-row select { width: auto; min-width: 220px; font-size: 12.5px; padding: 5px 8px; }
+  .ffapi-calc-insert-row select { width: auto; min-width: 220px; font-size: 13px; padding: 5px 8px; }
   .ffapi-calc-insert-row .ffapi-hint { margin: 0; }
   .ffapi-slug-row { display: flex; align-items: center; gap: 6px; margin: 2px 0 4px; }
-  .ffapi-slug-display { font-size: 12px; color: var(--ffapi-text-muted); }
+  .ffapi-slug-display { font-size: 13px; color: var(--ffapi-text-muted); }
   .ffapi-select-all-btn {
     background: none; border: 1px solid var(--ffapi-border); border-radius: var(--ffapi-radius-sm);
-    color: var(--ffapi-brand); font-size: 10.5px; padding: 1px 6px; cursor: pointer; font-family: inherit;
+    color: var(--ffapi-brand); font-size: 11px; padding: 1px 6px; cursor: pointer; font-family: inherit;
     line-height: 1.5;
   }
   .ffapi-select-all-btn:hover { background: color-mix(in srgb, var(--ffapi-brand) 8%, transparent); }
   .ffapi-formula-tester {
     margin-top: 10px; padding: 10px 12px; border-radius: var(--ffapi-radius-base); background: var(--ffapi-surface-sunken);
-    border: 1px solid var(--ffapi-border); font-size: 12.5px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border: 1px solid var(--ffapi-border); font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
   }
   .ffapi-result { font-family: var(--ffapi-font-mono); font-weight: 700; color: var(--ffapi-success); }
   .ffapi-result.err { color: var(--ffapi-danger); }
