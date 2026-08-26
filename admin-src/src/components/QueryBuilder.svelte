@@ -148,11 +148,30 @@
     return groups;
   }
 
+  function blankJoin() {
+    return { query_slug: '', left_key: '', right_key: '', match: 'first', join_type: 'left' };
+  }
   function addJoin() {
-    joins = [...joins, { query_slug: '', left_key: '', right_key: '', match: 'first', join_type: 'left' }];
+    // Joins-only query (no source table): the first join in the list supplies the base
+    // rows rather than matching against anything (see run_saved_query() in
+    // class-flat-api-engine.php) — it needs a SECOND join to actually combine it with
+    // anything. Requiring the user to click "+ Add join" twice just to join two
+    // existing queries together — once for "pick my starting query", again for "now
+    // pick what to join it to" — reads as if joining two queries doesn't work at all
+    // without a table. So the very first click here adds both at once: a ready-to-use
+    // "combine these two queries" pair, not a lone picker with nothing to do yet.
+    const startingJoinsOnlyQuery = tables.length === 0 && joins.length === 0;
+    joins = startingJoinsOnlyQuery ? [...joins, blankJoin(), blankJoin()] : [...joins, blankJoin()];
   }
   function removeJoin(i) {
-    joins = joins.filter((_, idx) => idx !== i);
+    if (i === 0 && tables.length === 0 && joins.length > 1) {
+      // The base join (index 0) and its paired match join (index 1) were added
+      // together as a unit — removing "the join" should remove both, not leave the
+      // match join behind to confusingly become the new, matchless base.
+      joins = joins.filter((_, idx) => idx !== 0 && idx !== 1);
+    } else {
+      joins = joins.filter((_, idx) => idx !== i);
+    }
   }
   function updateJoin(i, patch) {
     joins = joins.map((j, idx) => (idx === i ? { ...j, ...patch } : j));
@@ -626,7 +645,7 @@
             </select>
             {#if isBaseJoin}
               {#if j.query_slug}
-                <span class="ffapi-hint" style="margin:0;">used as the starting query — no source table, so its own columns are the base. Add another join below to combine it with a second query.</span>
+                <span class="ffapi-hint" style="margin:0;">used as the starting query — no source table, so its own columns are the base. Pick the query to combine it with below.</span>
               {/if}
             {:else if j.query_slug}
               <span class="ffapi-mono ffapi-muted">match my</span>
