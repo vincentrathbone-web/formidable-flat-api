@@ -404,6 +404,36 @@
     }
   }
 
+  // Live preview: re-runs automatically as the query changes, debounced so a burst of
+  // edits (e.g. typing a filter value character by character, or several field
+  // checkboxes clicked in quick succession) fires one request after things settle, not
+  // one per keystroke. The explicit "↻ Refresh now" button in the preview toolbar still
+  // calls runPreview() directly for an immediate, un-debounced re-run.
+  //
+  // JSON.stringify(def) below is doing real work, not just producing a string nobody
+  // uses: Svelte 5's $state proxies only register a fine-grained dependency for
+  // whatever is actually READ, synchronously, during the effect's own execution.
+  // buildQueryDef() just holds a reference to filters/joins/calcCols/columnOrder — it
+  // never iterates into them — so a bind:value edit on an EXISTING filter's value (or a
+  // join's field, or a calc column's formula) mutates that object in place without ever
+  // reassigning the array itself, and this effect would not see it: reading `filters`
+  // and reading `filters[i].value` are different dependencies to a proxy. Stringifying
+  // forces a deep synchronous read of every nested property, which is what actually
+  // wires this effect up to every field in the builder, not just table/field
+  // additions and removals.
+  let previewTimer = null;
+  $effect(() => {
+    const def = buildQueryDef();
+    void JSON.stringify(def); // deep-read every nested property — see comment above
+    clearTimeout(previewTimer);
+    if (def.tables.length === 0) {
+      previewRows = [];
+      stageCounts = null;
+      return;
+    }
+    previewTimer = setTimeout(runPreview, 600);
+  });
+
   function slugify(s) {
     return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   }
@@ -460,16 +490,31 @@
   // ajax_get_form_fields has never carried field type (see class-flat-api-admin.php).
   // A best-effort visual hint only; never fed back into filtering/sorting logic.
   // ---------------------------------------------------------------------
-  let topHeight = $state(460);
+  // Defaults to the top 2/3 of the viewport (bottom 1/3 for the live grid) — computed
+  // from window.innerHeight at mount rather than a fixed pixel guess, since this is a
+  // client-mounted admin app and `window` is always available by the time this script
+  // runs. `userResized` stops the resize-driven recompute below from fighting a
+  // deliberate manual drag.
+  let topHeight = $state(Math.round(window.innerHeight * (2 / 3)));
   let resizing = $state(false);
+  let userResized = $state(false);
+
+  $effect(() => {
+    function onWindowResize() {
+      if (!userResized) topHeight = Math.round(window.innerHeight * (2 / 3));
+    }
+    window.addEventListener('resize', onWindowResize);
+    return () => window.removeEventListener('resize', onWindowResize);
+  });
 
   function startResize(e) {
     e.preventDefault();
     resizing = true;
+    userResized = true;
     const startY = e.clientY;
     const startH = topHeight;
     function onMove(ev) {
-      topHeight = Math.max(220, Math.min(900, startH + (ev.clientY - startY)));
+      topHeight = Math.max(220, Math.min(window.innerHeight - 160, startH + (ev.clientY - startY)));
     }
     function onUp() {
       resizing = false;
@@ -845,19 +890,22 @@
   <div class="ffapi-preview-zone">
     <div class="ffapi-preview-toolbar">
       <div class="ffapi-pt-left">
-        <span class="ffapi-live-dot"></span>
+        <span class="ffapi-live-dot" class:pulsing={previewing}></span>
         <h2>Live Preview</h2>
+        <span class="ffapi-hint" style="margin:0;">updates automatically as you build</span>
       </div>
       <div class="ffapi-pt-right">
         {#if stageCounts}
           <span>Showing {previewRows.length.toLocaleString()} of <b class="ffapi-mono">{stageCounts.after_filter.toLocaleString()}</b> rows</span>
         {/if}
-        <button class="ffapi-btn ffapi-btn-sm" onclick={runPreview} disabled={previewing}>{previewing ? 'Loading…' : '↻ Refresh'}</button>
+        <button class="ffapi-btn ffapi-btn-sm" onclick={runPreview} disabled={previewing}>{previewing ? 'Loading…' : '↻ Refresh now'}</button>
       </div>
     </div>
 
     {#if previewRows.length === 0}
-      <p class="ffapi-hint" style="padding:18px 20px;">Click "Refresh" above to run this query against live data.</p>
+      <p class="ffapi-hint" style="padding:18px 20px;">
+        {tables.length === 0 ? 'Add a source table above — the preview updates automatically once there\'s something to run.' : (previewing ? 'Loading…' : 'No rows match this query yet.')}
+      </p>
     {:else}
       <div class="ffapi-grid-scroll">
         <table class="ffapi-big-grid ffapi-mono">
@@ -926,6 +974,12 @@
   .ffapi-pt-left { display: flex; align-items: center; gap: 9px; }
   .ffapi-pt-left h2 { font-size: 13px; font-weight: 700; margin: 0; }
   .ffapi-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ffapi-success); box-shadow: 0 0 0 3px var(--ffapi-success-bg); }
+  .ffapi-live-dot.pulsing { animation: ffapi-pulse 0.9s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .ffapi-live-dot.pulsing { animation: none; } }
+  @keyframes ffapi-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px var(--ffapi-success-bg); }
+    50% { box-shadow: 0 0 0 6px var(--ffapi-success-bg); }
+  }
   .ffapi-pt-right { display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: var(--ffapi-text-muted); }
 
   .ffapi-grid-scroll { overflow: auto; flex: 1; max-height: 520px; }
