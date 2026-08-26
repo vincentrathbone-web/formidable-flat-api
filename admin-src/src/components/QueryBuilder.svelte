@@ -1100,10 +1100,14 @@
 
   .ffapi-join-row {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px;
-    padding: 10px; background: var(--ffapi-surface-sunken); border: 1px solid var(--ffapi-border);
-    border-radius: var(--ffapi-radius-base);
+    padding: 10px 32px 10px 10px; background: var(--ffapi-surface-sunken); border: 1px solid var(--ffapi-border);
+    border-radius: var(--ffapi-radius-base); position: relative;
   }
   .ffapi-join-row select { width: auto; font-size: 13px; padding: 5px 8px; }
+  /* Anchored to the card's corner instead of sitting inline — with flex-wrap, an
+     inline remove button drifts wherever the wrapped controls happen to end, not
+     consistently at the end of the row. */
+  .ffapi-join-row .ffapi-row-remove { position: absolute; top: 6px; right: 6px; }
 
   .ffapi-key-picker { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .ffapi-key-picker-label { font-size: 13px; width: 160px; flex: none; }
