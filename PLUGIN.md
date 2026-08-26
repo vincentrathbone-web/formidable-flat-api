@@ -70,6 +70,8 @@ The slug is auto-generated from the name as you type. Duplicate slugs are auto-s
 
 **Query→query joins:** in step 1 you can also pull in another saved query's output columns matched on a shared column, or merge multiple forms directly. Once a table's key field(s) are set, a live sample-value preview (up to 3 real values) and a server-checked "Matches found ✓ / No matches ✗" indicator appear next to its picker — so a key mismatch is visible before you ever click Preview.
 
+**No source table at all:** step 1b works on its own too, with no source table selected — useful when what you need is really just two existing saved queries combined, and neither maps to a Formidable form directly. The first join then reads "start from this saved query" instead of asking for a match key: it supplies the starting rows, and every join after it matches/merges against that as usual (with "match my" correctly offering that first query's own fields).
+
 Three match modes:
 
 | Mode | Behaviour |

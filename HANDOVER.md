@@ -23,7 +23,7 @@ assets/                         Frontend button/table CSS + JS
 
 **Saved queries** are stored in the WP option `formidable_flat_saved_queries`. `run_saved_query()` is the single execution path for all output formats — a change there affects everything.
 
-**Query→query joins** are applied before filter/sort/calc, capped at depth 3, with cycle detection. Three match modes: `first` (1:1), `all` (1:many), `nearest_before` (as-of join on a key + latest-date-on-or-before match — see `apply_nearest_before_join()`). For `first`/`all`, `join_type` (default `left`) picks standard SQL-join semantics — `left`/`inner`/`right`/`full` — for which unmatched rows survive; `nearest_before` is always left/as-of and ignores it.
+**Query→query joins** are applied before filter/sort/calc, capped at depth 3, with cycle detection. Three match modes: `first` (1:1), `all` (1:many), `nearest_before` (as-of join on a key + latest-date-on-or-before match — see `apply_nearest_before_join()`). For `first`/`all`, `join_type` (default `left`) picks standard SQL-join semantics — `left`/`inner`/`right`/`full` — for which unmatched rows survive; `nearest_before` is always left/as-of and ignores it. A query can also have **zero source tables** — if `joins` is non-empty, the first join's query supplies the starting rows instead of matching against anything (see `run_saved_query()`), which is what lets two saved queries be combined with no Formidable table involved at all.
 
 **Filters** support 9 generic operators (`= != > >= < <= contains not_empty is_empty`) plus 5 date-aware ones (`date_equals date_before date_after date_on_or_before date_on_or_after`) that compare by calendar day via `date_op()`.
 
@@ -105,6 +105,7 @@ in `QueryBuilder.svelte` can still lose to a more-specific shared selector.
 **Before a release, verify end-to-end:**
 - Single-form query · View query · merged query · composite key
 - Query-to-query join (`first`, `all`, and `nearest_before` with a real date-anchored match); for `first`/`all`, exercise all four `join_type` values (`left`/`inner`/`right`/`full`) against a deliberately mismatched key so both an unmatched-base and an unmatched-joined row exist
+- Joins-only query (no source tables, two saved queries combined purely via step 1b) — verify save, live preview, and that the resulting saved query actually runs (not just previews) via REST/export
 - Filters (including the `date_*` operators) · natural sort · aliases · column ordering
 - Chained calculated columns
 - All output formats: REST JSON, CSV, XLSX, print, frontend table

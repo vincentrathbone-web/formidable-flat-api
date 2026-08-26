@@ -474,7 +474,12 @@ class Formidable_Flat_API_Admin {
         if ( trim( $raw ) === '' ) return null;
 
         $d = json_decode( $raw, true );
-        if ( ! is_array( $d ) || empty( $d['tables'] ) ) return null;
+        // A saved query needs either a real source table OR at least one query-to-query
+        // join — a joins-only query (combining two existing saved queries with no
+        // Formidable table at all, first join supplying the base rows — see
+        // run_saved_query() in class-flat-api-engine.php) is valid even with an empty
+        // 'tables'.
+        if ( ! is_array( $d ) || ( empty( $d['tables'] ) && empty( $d['joins'] ) ) ) return null;
 
         $tables = [];
         foreach ( (array) $d['tables'] as $t ) {
@@ -535,12 +540,18 @@ class Formidable_Flat_API_Admin {
         // only way to configure one before the builder UI existed) would silently downgrade to a
         // broken equi-join the next time the query was opened and saved in the admin.
         $joins = [];
-        foreach ( (array) ( $d['joins'] ?? [] ) as $j ) {
+        foreach ( array_values( (array) ( $d['joins'] ?? [] ) ) as $ji => $j ) {
             if ( ! is_array( $j ) ) continue;
             $qs = sanitize_key( (string) ( $j['query_slug'] ?? '' ) );
             $lk = sanitize_text_field( (string) ( $j['left_key']  ?? '' ) );
             $rk = sanitize_text_field( (string) ( $j['right_key'] ?? '' ) );
-            if ( $qs === '' || $lk === '' || $rk === '' ) continue;
+            if ( $qs === '' ) continue;
+            // The very first join in a joins-only query (no source tables — see
+            // run_saved_query()) supplies the starting rows rather than matching against
+            // anything, so it legitimately has no left_key/right_key. Every other join
+            // still needs both.
+            $is_base_join = ( $ji === 0 && empty( $tables ) );
+            if ( ! $is_base_join && ( $lk === '' || $rk === '' ) ) continue;
             $raw_match = (string) ( $j['match'] ?? 'first' );
             $match     = in_array( $raw_match, [ 'all', 'nearest_before' ], true ) ? $raw_match : 'first';
             // Which unmatched rows survive (left/inner/right/full) — see apply_query_joins()'s
@@ -573,6 +584,11 @@ class Formidable_Flat_API_Admin {
             }
             $joins[] = $entry;
         }
+
+        // Re-check after sanitization: every table row could have been dropped (invalid
+        // form_id) and every join row could have been dropped (missing query_slug/keys),
+        // in which case there's genuinely nothing to run.
+        if ( empty( $tables ) && empty( $joins ) ) return null;
 
         $sort_dir = strtoupper( (string) ( $d['sort_dir'] ?? 'ASC' ) );
 
@@ -664,7 +680,11 @@ class Formidable_Flat_API_Admin {
             $qs = sanitize_key( (string) $qs );
             $lk = sanitize_text_field( (string) ( $j_lks[ $i ] ?? '' ) );
             $rk = sanitize_text_field( (string) ( $j_rks[ $i ] ?? '' ) );
-            if ( $qs === '' || $lk === '' || $rk === '' ) continue;
+            if ( $qs === '' ) continue;
+            // See the JSON payload path above: the first join in a joins-only query
+            // (no source tables) supplies the starting rows and needs no match keys.
+            $is_base_join = ( $i === 0 && empty( $tables ) );
+            if ( ! $is_base_join && ( $lk === '' || $rk === '' ) ) continue;
             $raw_join_type = (string) ( $j_types[ $i ] ?? 'left' );
             $joins[] = [
                 'query_slug' => $qs,

@@ -230,11 +230,13 @@ class Formidable_Flat_API_Engine {
         // which means it's null on entry precisely when tracking IS wanted. Checking
         // `!== null` here would make every real call look like "don't track".
         $track_counts = func_num_args() >= 4;
-        $tables = $query['tables'] ?? [];
-        if ( empty( $tables ) ) return [];
+        $tables  = $query['tables'] ?? [];
+        $joins_cfg = $query['joins'] ?? [];
+        if ( empty( $tables ) && empty( $joins_cfg ) ) return [];
         if ( $track_counts ) $stage_counts = [ 'source' => 0, 'after_join' => 0, 'after_filter' => 0, 'joins' => [] ];
 
         $query = self::normalize_legacy_labels( $query );
+        $joins_cfg = $query['joins'] ?? []; // re-read: normalize_legacy_labels() doesn't touch joins, but stay consistent
 
         $selected = $query['selected_fields'] ?? [];
         $include_drafts = in_array( 'Draft Status', $selected, true );
@@ -247,8 +249,27 @@ class Formidable_Flat_API_Engine {
             }
         }
 
-        // Fetch raw flat rows directly via internal DB methods
-        if ( count( $tables ) === 1 ) {
+        if ( empty( $tables ) ) {
+            // Joins-only query: no real Formidable table at all — two (or more) existing
+            // saved queries combined purely through step 1b. There's no "left" side to
+            // fetch from a form, so the FIRST configured join instead supplies the
+            // starting rows (that saved query's own OUTPUT, post-selection/alias/calc —
+            // exactly what run_saved_query() on it would return); only joins AFTER that
+            // one actually match/merge against the accumulating row set. The builder UI
+            // reflects this by hiding the match-config controls on the first join row
+            // whenever there are no source tables — see QueryBuilder.svelte.
+            $base_slug = is_array( $joins_cfg[0] ?? null ) ? trim( (string) ( $joins_cfg[0]['query_slug'] ?? '' ) ) : '';
+            if ( $base_slug === '' ) return [];
+            if ( in_array( $base_slug, self::$join_stack, true ) ) return []; // self-join guard
+            if ( count( self::$join_stack ) >= self::MAX_JOIN_DEPTH ) return [];
+            $base_q = self::find_saved_query( $base_slug );
+            if ( ! $base_q ) return [];
+            self::$join_stack[] = $base_slug;
+            $rows = self::run_saved_query( $base_q );
+            array_pop( self::$join_stack );
+            $joins_cfg = array_slice( $joins_cfg, 1 ); // remaining joins match/merge as usual
+        } elseif ( count( $tables ) === 1 ) {
+            // Fetch raw flat rows directly via internal DB methods
             $rows = self::fetch_form_rows( (int) $tables[0]['form_id'], $include_drafts, $selected );
         } else {
             $form_ids = array_map( fn($t) => (int) $t['form_id'], $tables );
@@ -276,9 +297,9 @@ class Formidable_Flat_API_Engine {
         //
         // This exists because a client's Formidable forms can't always be changed, so the fields
         // a report needs are spread across several queries — this is how you gather them into one.
-        if ( ! empty( $query['joins'] ) && is_array( $query['joins'] ) ) {
+        if ( ! empty( $joins_cfg ) && is_array( $joins_cfg ) ) {
             $join_stats = null;
-            $rows = self::apply_query_joins( $rows, $query['joins'], $join_stats );
+            $rows = self::apply_query_joins( $rows, $joins_cfg, $join_stats );
             if ( $track_counts && $join_stats ) {
                 $stage_counts['joins'] = $join_stats;
             }
@@ -286,7 +307,7 @@ class Formidable_Flat_API_Engine {
             // join, not an equi-join — see its docblock) — derive matched/unmatched from the
             // always-present "{label} Match" column it writes onto every row instead.
             if ( $track_counts ) {
-                foreach ( $query['joins'] as $j ) {
+                foreach ( $joins_cfg as $j ) {
                     if ( ! is_array( $j ) || ( $j['match'] ?? '' ) !== 'nearest_before' ) continue;
                     $jq = self::find_saved_query( trim( (string) ( $j['query_slug'] ?? '' ) ) );
                     if ( ! $jq ) continue;

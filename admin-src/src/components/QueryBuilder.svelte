@@ -60,6 +60,14 @@
     for (const list of Object.values(fieldsByForm)) {
       for (const f of list) out.add(f.name);
     }
+    // Joins-only query (no source tables — see class-flat-api-engine.php's
+    // run_saved_query()): the first join's query supplies the starting rows, so its
+    // output fields need to be available here too, same as a real table's fields would
+    // be — this is what lets a LATER join's "match my" (and the filter/sort/calc
+    // pickers) reference the base query's own columns.
+    if (tables.length === 0 && joins.length && joins[0].query_slug) {
+      for (const name of joinedQueryFields(joins[0].query_slug)) out.add(name);
+    }
     return out;
   }
 
@@ -424,7 +432,7 @@
     const def = buildQueryDef();
     void JSON.stringify(def); // deep-read every nested property — see comment above
     clearTimeout(previewTimer);
-    if (def.tables.length === 0) {
+    if (def.tables.length === 0 && def.joins.length === 0) {
       previewRows = [];
       stageCounts = null;
       return;
@@ -438,7 +446,7 @@
 
   function save() {
     if (!label.trim()) { showToast('Give the query a name first'); return; }
-    if (tables.length === 0) { showToast('Add at least one source table'); return; }
+    if (tables.length === 0 && joins.length === 0) { showToast('Add at least one source table, or a join to combine existing queries'); return; }
     saving = true;
     submitForm('formidable_flat_save_query', {
       query_label: label,
@@ -606,16 +614,21 @@
       </div>
 
       <div class="ffapi-builder-section">
-        <p class="ffapi-section-title"><span class="ffapi-step-num">1b</span> Join other saved queries <span class="ffapi-muted" style="font-weight:400; font-size: 13px;">— optional</span></p>
+        <p class="ffapi-section-title"><span class="ffapi-step-num">1b</span> Join other saved queries <span class="ffapi-muted" style="font-weight:400; font-size: 13px;">— optional{tables.length === 0 ? ', or use on its own to combine two existing queries with no source table at all' : ''}</span></p>
         {#each joins as j, ji}
+          {@const isBaseJoin = ji === 0 && tables.length === 0}
           <div class="ffapi-join-row">
             <select value={j.query_slug} onchange={(e) => updateJoin(ji, { query_slug: e.target.value })}>
-              <option value="">— pick a saved query —</option>
+              <option value="">{isBaseJoin ? '— start from this saved query —' : '— pick a saved query —'}</option>
               {#each (boot.queries || []).filter((q) => q.slug !== querySlug) as q}
                 <option value={q.slug}>{q.label}</option>
               {/each}
             </select>
-            {#if j.query_slug}
+            {#if isBaseJoin}
+              {#if j.query_slug}
+                <span class="ffapi-hint" style="margin:0;">used as the starting query — no source table, so its own columns are the base. Add another join below to combine it with a second query.</span>
+              {/if}
+            {:else if j.query_slug}
               <span class="ffapi-mono ffapi-muted">match my</span>
               <select value={j.left_key} onchange={(e) => updateJoin(ji, { left_key: e.target.value })}>
                 <option value="">— field —</option>
@@ -916,7 +929,7 @@
 
     {#if previewRows.length === 0}
       <p class="ffapi-hint" style="padding:18px 20px;">
-        {tables.length === 0 ? 'Add a source table above — the preview updates automatically once there\'s something to run.' : (previewing ? 'Loading…' : 'No rows match this query yet.')}
+        {(tables.length === 0 && joins.length === 0) ? 'Add a source table above, or a join to combine two existing queries — the preview updates automatically once there\'s something to run.' : (previewing ? 'Loading…' : 'No rows match this query yet.')}
       </p>
     {:else}
       <div class="ffapi-grid-scroll">
