@@ -78,7 +78,16 @@ Three match modes:
 | `all` | 1:many — one output row per match; row count grows. |
 | `nearest_before` | An "as-of" join for data with no shared ID — matches on a key plus finds, among candidates sharing that key, the one whose date is the latest value on or before the base row's own date (e.g. matching a sample to the most recent calibration that precedes it). Optional time-of-day tie-break when more than one candidate shares the winning date, and an optional `max_gap_days` staleness cutoff that flags — never silently drops — a match older than the configured window. |
 
-Unmatched base rows are always kept (LEFT JOIN — a join never deletes rows). Keys match case-insensitively, whitespace collapsed.
+Which unmatched rows survive is controlled by "keeping", next to the match-mode picker (applies to `first`/`all` — `nearest_before` is always a left/as-of join and ignores it):
+
+| Keeping | Behaviour |
+|---------|-----------|
+| `left` (default) | Every row from this query is kept, matched or not — joined columns just come in blank when there's no match. A left join never deletes a row from your own query. |
+| `inner` | A row here with no match on the other side is dropped. |
+| `right` | The mirror image of left: a row here with no match is dropped, and rows that exist only in the joined query are added instead (this side blank). |
+| `full` | Both kinds of unmatched row are kept — nothing is dropped for lack of a match on either side. |
+
+The "rows → rows" banner under the join shows matched / no-match counts per join (and, for `right`/`full`, how many "theirs-only" rows were added) so a key mismatch is visible immediately rather than discovered later in an export. Keys match case-insensitively, whitespace collapsed.
 
 ---
 

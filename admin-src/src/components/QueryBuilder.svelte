@@ -31,11 +31,9 @@
   let selected = $state(new Set());
   let columnOrder = $state([]); // [{label, alias}]
   let filters = $state([]); // [{field, operator, value}]
-  // Query-to-query joins: [{query_slug, left_key, right_key, match, left_date?, right_date?, right_time?, max_gap_days?}].
-  // No UI edits this yet (see HANDOVER.md's Join UI to-do item) — preserved purely so a
-  // save never silently destroys a join that was configured by hand-editing the saved
-  // query's stored definition, which previously always happened because buildQueryDef()
-  // hardcoded this to [].
+  // Query-to-query joins: [{query_slug, left_key, right_key, match, join_type, left_date?, right_date?, right_time?, max_gap_days?}].
+  // join_type ('left'|'inner'|'right'|'full') only applies to match=first/all — nearest_before
+  // is always a left/as-of join by design (see class-flat-api-engine.php's apply_query_joins()).
   let joins = $state([]);
   let calcCols = $state([]); // [{name, formula}]
   let sortField = $state('');
@@ -143,7 +141,7 @@
   }
 
   function addJoin() {
-    joins = [...joins, { query_slug: '', left_key: '', right_key: '', match: 'first' }];
+    joins = [...joins, { query_slug: '', left_key: '', right_key: '', match: 'first', join_type: 'left' }];
   }
   function removeJoin(i) {
     joins = joins.filter((_, idx) => idx !== i);
@@ -633,6 +631,16 @@
                 <option value="all">all matches</option>
                 <option value="nearest_before">nearest before (as-of)</option>
               </select>
+              {#if j.match !== 'nearest_before'}
+                <span class="ffapi-mono ffapi-muted">keeping</span>
+                <select value={j.join_type || 'left'} onchange={(e) => updateJoin(ji, { join_type: e.target.value })}
+                  title="Which unmatched rows survive the join">
+                  <option value="left">all of mine (left)</option>
+                  <option value="inner">only matched rows (inner)</option>
+                  <option value="right">all of theirs (right)</option>
+                  <option value="full">everything (full outer)</option>
+                </select>
+              {/if}
               {#if j.match === 'nearest_before'}
                 <span class="ffapi-mono ffapi-muted">my</span>
                 <select value={j.left_date || ''} onchange={(e) => updateJoin(ji, { left_date: e.target.value })}>
@@ -664,7 +672,7 @@
         {/each}
         <button class="ffapi-btn ffapi-btn-sm ffapi-btn-ghost" onclick={addJoin}>+ Add join</button>
         {#if joins.length}
-          <p class="ffapi-hint">Joined columns appear in step 2 below, grouped under 🔗 the joined query's name — tick the ones you want. "Nearest before" matches on the key field(s) but, among rows sharing that key, picks the one whose date field is the latest value not later than your own date field — for data with no reliable shared key at all, only a "this always happens before that" ordering guarantee.</p>
+          <p class="ffapi-hint">Joined columns appear in step 2 below, grouped under 🔗 the joined query's name — tick the ones you want. "Nearest before" matches on the key field(s) but, among rows sharing that key, picks the one whose date field is the latest value not later than your own date field — for data with no reliable shared key at all, only a "this always happens before that" ordering guarantee. "Keeping" controls which unmatched rows survive: <b>all of mine</b> never drops a row from this query (unmatched columns just come in blank); <b>only matched</b> drops a row here that found nothing on the other side; <b>all of theirs</b> also adds rows that exist only in the joined query (with this side blank); <b>everything</b> keeps both kinds of unmatched row.</p>
         {/if}
         {#if stageCounts && joins.length}
           <div class="ffapi-impact-banner">
@@ -676,10 +684,13 @@
                 {#each Object.entries(stageCounts.joins) as [jlabel, s]}
                   <span class="ffapi-mono ffapi-ms-ok" title="{jlabel}: matched">{s.matched.toLocaleString()} matched</span>
                   <span class="ffapi-mono ffapi-ms-warn" title="{jlabel}: no match">{s.unmatched.toLocaleString()} no match</span>
+                  {#if s.right_only}
+                    <span class="ffapi-mono ffapi-ms-warn" title="{jlabel}: rows added that only exist in the joined query">+{s.right_only.toLocaleString()} theirs-only</span>
+                  {/if}
                 {/each}
               </span>
             {:else}
-              <span class="ffapi-hint" style="margin:0;">row count unchanged — a join never drops a row</span>
+              <span class="ffapi-hint" style="margin:0;">row count unchanged</span>
             {/if}
           </div>
         {/if}

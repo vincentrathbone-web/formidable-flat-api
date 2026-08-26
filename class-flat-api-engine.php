@@ -277,7 +277,14 @@ class Formidable_Flat_API_Engine {
         // This exists because a client's Formidable forms can't always be changed, so the fields
         // a report needs are spread across several queries — this is how you gather them into one.
         if ( ! empty( $query['joins'] ) && is_array( $query['joins'] ) ) {
-            $rows = self::apply_query_joins( $rows, $query['joins'] );
+            $join_stats = null;
+            $rows = self::apply_query_joins( $rows, $query['joins'], $join_stats );
+            if ( $track_counts && $join_stats ) {
+                $stage_counts['joins'] = $join_stats;
+            }
+            // nearest_before joins aren't tracked by apply_query_joins() above (it's an as-of
+            // join, not an equi-join — see its docblock) — derive matched/unmatched from the
+            // always-present "{label} Match" column it writes onto every row instead.
             if ( $track_counts ) {
                 foreach ( $query['joins'] as $j ) {
                     if ( ! is_array( $j ) || ( $j['match'] ?? '' ) !== 'nearest_before' ) continue;
@@ -478,14 +485,22 @@ class Formidable_Flat_API_Engine {
      * Join other saved queries into the current row set.
      *
      * Each join is: [ 'query_slug', 'left_key', 'right_key', 'match' => 'first'|'all'|
-     * 'nearest_before', 'left_date', 'right_date', 'right_time' (optional),
-     * 'max_gap_days' (optional) ].
+     * 'nearest_before', 'join_type' => 'left'|'inner'|'right'|'full', 'left_date', 'right_date',
+     * 'right_time' (optional), 'max_gap_days' (optional) ].
      *
      * Semantics, deliberately kept simple and predictable:
-     *  - LEFT JOIN: a base row with no match is KEPT (its joined columns are simply absent),
-     *    so a join can never silently delete rows from your query.
+     *  - `join_type` (default 'left') controls which unmatched rows survive — it applies only to
+     *    match=first/all (the equi-join modes); nearest_before is always a left/"as-of" join by
+     *    design (see its own docblock) and ignores this setting entirely.
+     *      - left:  every base row is kept, matched or not (joined columns blank if unmatched).
+     *        A left join can never silently delete a row from your query.
+     *      - inner: a base row with no match is dropped.
+     *      - right: a base row with no match is dropped; a joined-query row that matched nothing
+     *        is added instead (base-side columns blank) — the mirror image of left.
+     *      - full:  both kinds of unmatched row are kept — nothing is ever dropped for lack of a
+     *        match on either side.
      *  - match=first (default): take the first matching row — the 1:1 case (e.g. post-weights
-     *    per sample). Row count is unchanged.
+     *    per sample). Row count is unchanged (for join_type=left/inner).
      *  - match=all: emit one output row per match — the 1:many case (e.g. pollutant results,
      *    which have several rows per sample). Row count grows.
      *  - match=nearest_before: an "as-of" join, not an equi-join — for data that has no shared
@@ -499,11 +514,23 @@ class Formidable_Flat_API_Engine {
      *    since a blank cell alone doesn't say whether nothing matched, or nothing was ever
      *    captured to compare against.
      *  - Column collisions: the base row wins; the incoming column is prefixed with the joined
-     *    query's label ("Post-weights: Sample ID"). Nothing is ever overwritten or lost.
+     *    query's label ("Post-weights: Sample ID"). Nothing is ever overwritten or lost. A
+     *    right-only row (join_type right/full) uses a blank template of the base row's own
+     *    columns for this same collision check, so its columns line up identically with a
+     *    matched row's.
      *  - Keys are matched case-insensitively with whitespace collapsed, because the same sample
      *    id is rarely typed identically across two forms.
+     *
+     * `$join_stats`, if passed by reference, is populated with per-join
+     * [ 'matched' => int, 'unmatched' => int, 'right_only' => int ] counts (base rows that
+     * matched / didn't, and — for right/full — joined-query rows added with no base match).
+     * nearest_before joins are not included here; their own "{label} Match" column is the
+     * source of truth for those (see run_saved_query()).
      */
-    private static function apply_query_joins( array $rows, array $joins ): array {
+    private static function apply_query_joins( array $rows, array $joins, ?array &$join_stats = null ): array {
+        $track_stats = func_num_args() >= 3;
+        if ( $track_stats ) $join_stats = [];
+
         foreach ( $joins as $j ) {
             if ( ! is_array( $j ) ) continue;
 
@@ -512,6 +539,8 @@ class Formidable_Flat_API_Engine {
             $rkey     = trim( (string) ( $j['right_key']  ?? '' ) );
             $raw_mode = (string) ( $j['match'] ?? 'first' );
             $mode     = in_array( $raw_mode, [ 'all', 'nearest_before' ], true ) ? $raw_mode : 'first';
+            $raw_type = (string) ( $j['join_type'] ?? 'left' );
+            $join_type = in_array( $raw_type, [ 'inner', 'right', 'full' ], true ) ? $raw_type : 'left';
             if ( $slug === '' || $lkey === '' || $rkey === '' ) continue;
 
             $ldate = trim( (string) ( $j['left_date']  ?? '' ) );
@@ -541,16 +570,17 @@ class Formidable_Flat_API_Engine {
             $right = self::run_saved_query( $jq );
             array_pop( self::$join_stack );
 
-            if ( empty( $right ) ) continue;
-
             $label = trim( (string) ( $jq['label'] ?? $slug ) );
 
             if ( $mode === 'nearest_before' ) {
+                if ( empty( $right ) ) continue; // as-of join: nothing to match against, base rows unaffected
                 $rows = self::apply_nearest_before_join( $rows, $right, $lkey, $rkey, $ldate, $rdate, $label, $rtime, $max_gap_days );
                 continue;
             }
 
-            // Index the joined rows by their key.
+            // Index the joined rows by their key. (Intentionally NOT short-circuited when $right
+            // or $idx is empty — join_type=inner/right must correctly drop base rows against an
+            // empty right side, which the loop below already does on its own.)
             $idx = [];
             foreach ( $right as $rr ) {
                 if ( ! is_array( $rr ) ) continue;
@@ -558,14 +588,28 @@ class Formidable_Flat_API_Engine {
                 if ( $k === '' ) continue;
                 $idx[ $k ][] = $rr;
             }
-            if ( empty( $idx ) ) continue;
+
+            // Blank template of the base row's own columns, used to shape a right-only row
+            // (join_type right/full) so its columns — and the label-prefix collision rule —
+            // line up identically with a matched row's.
+            $left_template = ! empty( $rows ) ? array_fill_keys( array_keys( $rows[0] ), '' ) : [];
+
+            $matched_keys = [];
+            $matched_n = 0; $unmatched_n = 0;
 
             $out = [];
             foreach ( $rows as $row ) {
                 $k       = self::join_key( $row[ $lkey ] ?? '' );
                 $matches = ( $k !== '' && isset( $idx[ $k ] ) ) ? $idx[ $k ] : [];
 
-                if ( empty( $matches ) ) { $out[] = $row; continue; }   // LEFT JOIN: keep it
+                if ( empty( $matches ) ) {
+                    $unmatched_n++;
+                    if ( $join_type === 'left' || $join_type === 'full' ) $out[] = $row;
+                    continue;
+                }
+
+                $matched_n++;
+                if ( $k !== '' ) $matched_keys[ $k ] = true;
 
                 if ( $mode === 'first' ) {
                     $out[] = self::merge_joined( $row, $matches[0], $label );
@@ -573,6 +617,22 @@ class Formidable_Flat_API_Engine {
                     foreach ( $matches as $m ) $out[] = self::merge_joined( $row, $m, $label );
                 }
             }
+
+            $right_only_n = 0;
+            if ( $join_type === 'right' || $join_type === 'full' ) {
+                foreach ( $idx as $k => $candidates ) {
+                    if ( isset( $matched_keys[ $k ] ) ) continue;
+                    foreach ( $candidates as $rr ) {
+                        $out[] = self::merge_joined( $left_template, $rr, $label );
+                        $right_only_n++;
+                    }
+                }
+            }
+
+            if ( $track_stats ) {
+                $join_stats[ $label ] = [ 'matched' => $matched_n, 'unmatched' => $unmatched_n, 'right_only' => $right_only_n ];
+            }
+
             $rows = $out;
         }
 

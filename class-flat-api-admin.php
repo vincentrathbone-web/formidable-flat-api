@@ -543,11 +543,17 @@ class Formidable_Flat_API_Admin {
             if ( $qs === '' || $lk === '' || $rk === '' ) continue;
             $raw_match = (string) ( $j['match'] ?? 'first' );
             $match     = in_array( $raw_match, [ 'all', 'nearest_before' ], true ) ? $raw_match : 'first';
+            // Which unmatched rows survive (left/inner/right/full) — see apply_query_joins()'s
+            // docblock. Only meaningful for match=first/all; nearest_before is always left/as-of
+            // and ignores this, so it's harmless (if unused) to still save it either way.
+            $raw_join_type = (string) ( $j['join_type'] ?? 'left' );
+            $join_type     = in_array( $raw_join_type, [ 'inner', 'right', 'full' ], true ) ? $raw_join_type : 'left';
             $entry = [
                 'query_slug' => $qs,
                 'left_key'   => $lk,
                 'right_key'  => $rk,
                 'match'      => $match,
+                'join_type'  => $join_type,
             ];
             if ( $match === 'nearest_before' ) {
                 $ldate = sanitize_text_field( (string) ( $j['left_date']  ?? '' ) );
@@ -653,16 +659,19 @@ class Formidable_Flat_API_Admin {
         $j_lks   = (array) ( $_POST['join_left']   ?? [] );
         $j_rks   = (array) ( $_POST['join_right']  ?? [] );
         $j_mods  = (array) ( $_POST['join_match']  ?? [] );
+        $j_types = (array) ( $_POST['join_type']   ?? [] );
         foreach ( $j_slugs as $i => $qs ) {
             $qs = sanitize_key( (string) $qs );
             $lk = sanitize_text_field( (string) ( $j_lks[ $i ] ?? '' ) );
             $rk = sanitize_text_field( (string) ( $j_rks[ $i ] ?? '' ) );
             if ( $qs === '' || $lk === '' || $rk === '' ) continue;
+            $raw_join_type = (string) ( $j_types[ $i ] ?? 'left' );
             $joins[] = [
                 'query_slug' => $qs,
                 'left_key'   => $lk,
                 'right_key'  => $rk,
                 'match'      => ( ( $j_mods[ $i ] ?? 'first' ) === 'all' ) ? 'all' : 'first',
+                'join_type'  => in_array( $raw_join_type, [ 'inner', 'right', 'full' ], true ) ? $raw_join_type : 'left',
             ];
         }
 
