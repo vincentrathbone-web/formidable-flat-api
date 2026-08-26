@@ -632,7 +632,11 @@
               <span class="ffapi-mono ffapi-muted">match my</span>
               <select value={j.left_key} onchange={(e) => updateJoin(ji, { left_key: e.target.value })}>
                 <option value="">— field —</option>
-                {#each [...allAvailableLabels()] as f}<option value={f}>{f}</option>{/each}
+                {#each [...groupedFields()] as [gId, group] (gId)}
+                  <optgroup label={group.isJoin ? '🔗 ' + group.name : group.name}>
+                    {#each group.fields as f}<option value={f.name}>{f.name}</option>{/each}
+                  </optgroup>
+                {/each}
               </select>
               <span class="ffapi-mono ffapi-muted">to its</span>
               <select value={j.right_key} onchange={(e) => updateJoin(ji, { right_key: e.target.value })}>
@@ -658,7 +662,11 @@
                 <span class="ffapi-mono ffapi-muted">my</span>
                 <select value={j.left_date || ''} onchange={(e) => updateJoin(ji, { left_date: e.target.value })}>
                   <option value="">— date field —</option>
-                  {#each [...allAvailableLabels()] as f}<option value={f}>{f}</option>{/each}
+                  {#each [...groupedFields()] as [gId, group] (gId)}
+                    <optgroup label={group.isJoin ? '🔗 ' + group.name : group.name}>
+                      {#each group.fields as f}<option value={f.name}>{f.name}</option>{/each}
+                    </optgroup>
+                  {/each}
                 </select>
                 <span class="ffapi-mono ffapi-muted">on/before its</span>
                 <select value={j.right_date || ''} onchange={(e) => updateJoin(ji, { right_date: e.target.value })}>
