@@ -212,11 +212,27 @@ class Formidable_Flat_API_Engine {
     }
 
     /**
-     * Run a saved query configuration
+     * Run a saved query configuration.
+     *
+     * $stage_counts, when passed, is filled with the row count after each
+     * count-changing stage (source fetch, after joins, after filters — the last of
+     * which is also the true final count, since sort/prune/calc never change row
+     * count and $limit only truncates the *preview* display, not the real result).
+     * For any join whose match mode is 'nearest_before', also records
+     * ['joins'][$label] = ['matched' => int, 'unmatched' => int] by reading that
+     * join's own "{label} Match" column — never fabricated, only ever read back
+     * from what apply_query_joins() already computed.
      */
-    public static function run_saved_query( array $query, int $limit = 0, array $opts = [] ): array {
+    public static function run_saved_query( array $query, int $limit = 0, array $opts = [], ?array &$stage_counts = null ): array {
+        // Whether the caller wants counts tracked at all is "was a 4th argument passed",
+        // not "is $stage_counts non-null" — the natural way to declare an as-yet-empty
+        // output variable at the call site is `$sc = null; run_saved_query(..., $sc);`,
+        // which means it's null on entry precisely when tracking IS wanted. Checking
+        // `!== null` here would make every real call look like "don't track".
+        $track_counts = func_num_args() >= 4;
         $tables = $query['tables'] ?? [];
         if ( empty( $tables ) ) return [];
+        if ( $track_counts ) $stage_counts = [ 'source' => 0, 'after_join' => 0, 'after_filter' => 0, 'joins' => [] ];
 
         $query = self::normalize_legacy_labels( $query );
 
@@ -250,6 +266,7 @@ class Formidable_Flat_API_Engine {
             $rows     = self::fetch_merged_rows( $form_ids, $key_fids, $include_drafts );
         }
 
+        if ( $track_counts ) $stage_counts['source'] = count( $rows );
         if ( empty( $rows ) ) return [];
 
         // --- Joined saved queries ---
@@ -261,8 +278,25 @@ class Formidable_Flat_API_Engine {
         // a report needs are spread across several queries — this is how you gather them into one.
         if ( ! empty( $query['joins'] ) && is_array( $query['joins'] ) ) {
             $rows = self::apply_query_joins( $rows, $query['joins'] );
-            if ( empty( $rows ) ) return [];
+            if ( $track_counts ) {
+                foreach ( $query['joins'] as $j ) {
+                    if ( ! is_array( $j ) || ( $j['match'] ?? '' ) !== 'nearest_before' ) continue;
+                    $jq = self::find_saved_query( trim( (string) ( $j['query_slug'] ?? '' ) ) );
+                    if ( ! $jq ) continue;
+                    $match_col = trim( (string) ( $jq['label'] ?? '' ) ) . ' Match';
+                    $matched = 0; $unmatched = 0;
+                    foreach ( $rows as $r ) {
+                        if ( ! array_key_exists( $match_col, $r ) ) continue;
+                        if ( (string) $r[ $match_col ] === '' ) $matched++; else $unmatched++;
+                    }
+                    if ( $matched + $unmatched > 0 ) {
+                        $stage_counts['joins'][ $jq['label'] ?? $j['query_slug'] ] = [ 'matched' => $matched, 'unmatched' => $unmatched ];
+                    }
+                }
+            }
         }
+        if ( $track_counts ) $stage_counts['after_join'] = count( $rows );
+        if ( empty( $rows ) ) return [];
 
         // --- Filtering ---
         $filters = $query['filters'] ?? [];
@@ -300,6 +334,7 @@ class Formidable_Flat_API_Engine {
                 return true;
             } ) );
         }
+        if ( $track_counts ) $stage_counts['after_filter'] = count( $rows );
 
         // --- Sorting ---
         $sort_field = $query['sort_field'] ?? '';
