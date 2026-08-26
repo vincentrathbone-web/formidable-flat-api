@@ -1,6 +1,6 @@
 # Formidable Flat API — Reference
 
-**v3.2.0** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
+**v3.2.1** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
 
 ---
 
@@ -146,6 +146,11 @@ Both require a logged-in WordPress session. Theme tokens are CSS variables on `.
 ---
 
 ## Changelog
+
+### 3.2.1
+- Added: query-to-query joins now have a "keeping" control next to the match-mode picker — `left` (default, unchanged from before), `inner`, `right`, or `full outer` — so which unmatched rows survive a join is an explicit choice instead of always-left-join-only. The row-count banner under each join now shows live matched / no-match counts for every join (previously only worked for "nearest before"), plus a "+N theirs-only" count for right/full joins.
+- Added: a saved query can now be built from step 1b alone, with no source table at all — useful for combining two existing saved queries that don't each map to a Formidable form directly. The first join reads "start from this saved query" and supplies the starting rows; any join after it matches/merges against that as normal, with "match my" correctly offering the first query's own fields.
+- Fixed: saving a joins-only query (no source table) previously dropped its base-supplying first join silently — it would preview correctly but come back broken after a reload, since the save-time sanitizer required match-key fields on every join unconditionally.
 
 ### 3.2.0
 - Added: Query Builder redesigned as a Power BI/Power Query-style split view — a resizable top pane for building the query and a dominant bottom pane with a live-updating results grid, defaulting to a 2:1 top/bottom split.
