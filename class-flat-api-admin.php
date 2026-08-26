@@ -353,7 +353,8 @@ class Formidable_Flat_API_Admin {
         if ( $limit < 0 )   $limit = 10;
         if ( $limit > 500 ) $limit = 500;
 
-        $rows = Formidable_Flat_API_Engine::run_saved_query( $raw, $limit );
+        $stage_counts = null;
+        $rows = Formidable_Flat_API_Engine::run_saved_query( $raw, $limit, [], $stage_counts );
 
         // Also return one full-width (unpruned) row so the builder's live formula tester can
         // resolve references to fields that aren't selected for output (e.g. a calc column
@@ -362,7 +363,7 @@ class Formidable_Flat_API_Admin {
         $sample_rows = Formidable_Flat_API_Engine::run_saved_query( $raw, 1, [ 'no_prune' => true ] );
         $sample      = ! empty( $sample_rows ) ? $sample_rows[0] : null;
 
-        wp_send_json_success( [ 'rows' => $rows, 'sample' => $sample ] );
+        wp_send_json_success( [ 'rows' => $rows, 'sample' => $sample, 'stage_counts' => $stage_counts ] );
     }
 
     // ============================================================
