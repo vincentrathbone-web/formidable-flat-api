@@ -2,7 +2,7 @@
 # This script creates a versioned ZIP file with the correct folder structure.
 
 $pluginSlug = "formidable-flat-api"
-$version = "3.1.2" # Update this whenever the version changes
+$version = "3.2.0" # Update this whenever the version changes
 $zipFileName = "$pluginSlug-v$version.zip"
 $tempBase = "$env:TEMP\ffapi-package-$(Get-Date -Format 'yyyyMMddHHmmss')"
 $tempPluginDir = "$tempBase\$pluginSlug"

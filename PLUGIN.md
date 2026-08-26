@@ -1,6 +1,6 @@
 # Formidable Flat API — Reference
 
-**v3.1.2** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
+**v3.2.0** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
 
 ---
 
@@ -135,6 +135,13 @@ Both require a logged-in WordPress session. Theme tokens are CSS variables on `.
 ---
 
 ## Changelog
+
+### 3.2.0
+- Added: Query Builder redesigned as a Power BI/Power Query-style split view — a resizable top pane for building the query and a dominant bottom pane with a live-updating results grid, defaulting to a 2:1 top/bottom split.
+- Added: the preview now runs automatically as you edit the query (debounced ~600ms) instead of requiring a manual "Preview" click, and shows a per-step row-count flow (source → after join → after filters → final output) so a faulty join or filter is visible immediately.
+- Added: a "Save Query" button next to "Refresh now" in the preview toolbar, so you can save without scrolling back to the header.
+- Changed: live preview now shows the first 100 rows by default (was 10).
+- Changed: admin UI typography standardized to two font sizes (13px body/labels, 11px captions/hints) across the Query Builder and shared design tokens.
 
 ### 3.1.2
 - Fixed: 3.1.1 was built from an outdated base and silently dropped several features already validated in production use — restored: the five `date_*` filter operators, the `nearest_before` "as-of" join match mode (with optional time-of-day tie-break and `max_gap_days` staleness cutoff), the join key-picker's live sample-value preview and "Matches found" indicator, a composite-key `(int)` cast bug fix (was silently zeroing out multi-field merges), and a self-referential parent-form guard.
