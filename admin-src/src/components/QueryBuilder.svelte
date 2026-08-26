@@ -1,8 +1,9 @@
 <script>
-  import { getFormFields, previewQuery, loadQuery, submitForm } from '../lib/api.js';
+  import { getFormFields, getKeyValueSamples, getKeyMatchCheck, previewQuery, loadQuery, submitForm } from '../lib/api.js';
   import { evaluate } from '../lib/formula.js';
   import { showToast } from '../lib/toast.svelte.js';
   import KeyFieldPicker from './KeyFieldPicker.svelte';
+  import AddTableSelect from './AddTableSelect.svelte';
 
   let { boot, slug, onSaved } = $props();
 
@@ -15,14 +16,27 @@
     'Created_At', 'Last Modified By',
   ];
 
+  // Filter operators backed by a native date picker instead of the generic free-text value
+  // input — see date_op() in class-flat-api-engine.php for why these exist separately from
+  // the generic >/</etc operators (an unparseable "date" typed into a text box would silently
+  // fall back to a string comparison instead of just not matching).
+  const DATE_OPERATORS = ['date_equals', 'date_before', 'date_after', 'date_on_or_before', 'date_on_or_after'];
+
   let label = $state('');
   let querySlug = $state('');
   let oldSlug = $state('');
   let tables = $state([]); // [{form_id, key_field_id: number[]}]
   let fieldsByForm = $state({}); // formId -> [{id,name,form_name,from_parent}]
+  let keyValueSamples = $state({}); // "formId:fieldId" -> string[] (up to 3 real sample values, [] once loaded-but-empty)
   let selected = $state(new Set());
   let columnOrder = $state([]); // [{label, alias}]
   let filters = $state([]); // [{field, operator, value}]
+  // Query-to-query joins: [{query_slug, left_key, right_key, match, left_date?, right_date?, right_time?, max_gap_days?}].
+  // No UI edits this yet (see HANDOVER.md's Join UI to-do item) — preserved purely so a
+  // save never silently destroys a join that was configured by hand-editing the saved
+  // query's stored definition, which previously always happened because buildQueryDef()
+  // hardcoded this to [].
+  let joins = $state([]);
   let calcCols = $state([]); // [{name, formula}]
   let sortField = $state('');
   let sortDir = $state('ASC');
@@ -54,6 +68,29 @@
   // child table's group. Deduplicates by label across tables, same as the pre-Svelte
   // admin UI did. Groups are keyed by form ID so identical form names remain
   // distinguishable and source-qualified frm_items metadata stays with its form.
+  // A joined query's own OUTPUT columns (post-selection/alias) — read straight from
+  // boot.queries (already localized with every saved query's full definition), no extra
+  // fetch needed. Prefers each column_order entry's alias over its label, since alias is
+  // what the field would actually be named in the joined query's real output.
+  //
+  // Calculated columns are appended separately: the engine (run_saved_query() in
+  // class-flat-api-engine.php) computes and appends them to the output at the far right
+  // dynamically at run time — they're never part of column_order/selected_fields in the
+  // saved definition itself, since that only lists the fields the query was BUILT from,
+  // not what it computes on top of them. Omitting this meant a calculated column (e.g.
+  // "Avg Flowrate (L/min)" combining before+after flowrate) was invisible in every
+  // "to its [field]" picker for anything joining to that query, even though the real
+  // output genuinely has it.
+  function joinedQueryFields(slug) {
+    const q = (boot.queries || []).find((x) => x.slug === slug);
+    if (!q) return [];
+    const base = ( q.column_order && q.column_order.length )
+      ? q.column_order.map((c) => c.alias || c.label).filter(Boolean)
+      : (q.selected_fields || []);
+    const calc = (q.calculated_columns || []).map((c) => c.name).filter(Boolean);
+    return [...base, ...calc];
+  }
+
   function groupedFields() {
     const seen = new Set();
     const groups = new Map();
@@ -67,7 +104,43 @@
         groups.get(gId).fields.push(f);
       }
     }
+    // Query-to-query joins each contribute the joined query's own output columns as a
+    // separate group. A same-named collision with an existing base column (or an earlier
+    // join's own column — checked in join order, same as the engine merges them) is
+    // resolved server-side at query-run time by prefixing with the joined query's label
+    // (merge_joined() in class-flat-api-engine.php: `$label . ': ' . $col`) — a real,
+    // legitimate scenario, not just a hypothetical: e.g. a form can have its own
+    // manually-entered "Avg Before Flowrate (mL/min)" field that collides with the exact
+    // same field name coming from a genuinely-joined, more reliable source. Previously this
+    // was just excluded from the picker entirely — silently making the joined column
+    // unselectable, exactly the bug that motivated this comment. Now it's shown using the
+    // SAME prefixed name the engine will actually produce, so ticking it selects the real,
+    // correctly-resolving output column instead of hiding it or colliding with the base one.
+    for (const j of joins) {
+      if (!j.query_slug) continue;
+      const gId = 'join:' + j.query_slug;
+      if (groups.has(gId)) continue;
+      const jq = (boot.queries || []).find((x) => x.slug === j.query_slug);
+      const jlabel = jq ? jq.label : j.query_slug;
+      const fields = [];
+      for (const name of joinedQueryFields(j.query_slug)) {
+        const outName = seen.has(name) ? `${jlabel}: ${name}` : name;
+        seen.add(outName);
+        fields.push({ name: outName, label: outName, is_system: false });
+      }
+      groups.set(gId, { id: gId, name: jlabel, fields, isJoin: true });
+    }
     return groups;
+  }
+
+  function addJoin() {
+    joins = [...joins, { query_slug: '', left_key: '', right_key: '', match: 'first' }];
+  }
+  function removeJoin(i) {
+    joins = joins.filter((_, idx) => idx !== i);
+  }
+  function updateJoin(i, patch) {
+    joins = joins.map((j, idx) => (idx === i ? { ...j, ...patch } : j));
   }
 
   async function ensureFieldsLoaded(formId) {
@@ -87,14 +160,117 @@
     await ensureFieldsLoaded(Number(formId));
   }
 
+  // Every field label still reachable from a REMAINING table, once `tables` has
+  // already been updated — used by removeTable() to decide what step 2/3 state a
+  // removed table's fields should take with them. Legacy system fields (see
+  // LEGACY_SYSTEM_FIELDS above) aren't tied to any one table's fieldsByForm list, so
+  // they're kept regardless.
+  function fieldsStillAvailable() {
+    const out = new Set();
+    for (const t of tables) {
+      for (const f of fieldsByForm[t.form_id] || []) out.add(f.name);
+    }
+    return out;
+  }
+
   function removeTable(formId) {
     tables = tables.filter((t) => t.form_id !== formId);
+    const available = fieldsStillAvailable();
+    const keep = (name) => LEGACY_SYSTEM_FIELDS.includes(name) || available.has(name);
+    selected = new Set(Array.from(selected).filter(keep));
+    columnOrder = columnOrder.filter((c) => keep(c.label));
+    filters = filters.filter((f) => f.field === '' || keep(f.field));
+    if (sortField && !keep(sortField)) sortField = '';
   }
 
   function formName(formId) {
     const f = (boot.forms || []).find((x) => x.id === formId);
     return f ? f.name : `Form ${formId}`;
   }
+
+  // A key field pulled in from an automatically-included parent form (from_parent: 1
+  // in ajax_get_form_fields) carries its OWN form_id — sampling that field's real
+  // values means querying ITS form, not necessarily this table's form_id.
+  function keyFieldFormId(t, fieldId) {
+    const list = fieldsByForm[t.form_id] || [];
+    const f = list.find((x) => Number(x.id) === Number(fieldId));
+    return f ? Number(f.form_id || t.form_id) : t.form_id;
+  }
+
+  async function ensureKeySamplesLoaded(formId, fieldId) {
+    const cacheKey = `${formId}:${fieldId}`;
+    if (keyValueSamples[cacheKey] !== undefined) return;
+    // Mark as in-flight immediately (empty array) so a concurrent call for the same
+    // key doesn't also fire a redundant request; corrected once the real result lands.
+    keyValueSamples = { ...keyValueSamples, [cacheKey]: null };
+    try {
+      const samples = await getKeyValueSamples(formId, fieldId);
+      keyValueSamples = { ...keyValueSamples, [cacheKey]: samples };
+    } catch (e) {
+      keyValueSamples = { ...keyValueSamples, [cacheKey]: [] };
+    }
+  }
+
+  // Keeps sample values loaded for every currently-selected key field across every
+  // table — covers both a fresh pick (onChange below) and an edited saved query
+  // whose key_field_id arrives already populated from loadQuery(). Re-derives
+  // keyFieldFormId() (and so re-fires for any field whose form_id guess changes)
+  // whenever fieldsByForm finishes loading, since it's read reactively here too.
+  $effect(() => {
+    for (const t of tables) {
+      for (const id of t.key_field_id || []) {
+        ensureKeySamplesLoaded(keyFieldFormId(t, id), id);
+      }
+    }
+  });
+
+  // Live preview of what a table's join key actually resolves to, e.g.
+  // "Pump123, Pump456, Pump678 || Date1, Date2, Date3" — shown next to each
+  // table's key picker so two tables meant to join on the same fields can be
+  // visually compared at a glance, using REAL sample values rather than just
+  // field names, since two fields can share a label but never actually share a
+  // value (or vice versa — same field picked in a different order). The " || "
+  // between fields echoes fetch_merged_rows()'s own literal "||" key-part
+  // separator (spaced out here since each side is a comma-list, not a single
+  // value), so what's shown here is recognizably the shape of the match key.
+  // This exists because composite keys are order-sensitive (two tables keying
+  // on the same fields but in a different pick order silently never match), and
+  // no amount of staring at two separate pickers' chips proves the match will
+  // actually work — only the real data does.
+  function keySignature(t) {
+    const parts = (t.key_field_id || []).map((id) => {
+      const cacheKey = `${keyFieldFormId(t, id)}:${id}`;
+      const samples = keyValueSamples[cacheKey];
+      if (samples === undefined || samples === null) return '…';
+      if (!samples.length) return '(no data)';
+      return samples.join(', ');
+    });
+    return parts.join(' || ');
+  }
+
+  // Live "Matches found" indicator next to a table's key picker (2nd table on):
+  // debounced check of whether this table's join key resolves to any row already
+  // contributed by the earlier tables, so the user finds out before scrolling down
+  // to Preview. Keyed by table index rather than a stable id since tables have none;
+  // matchStatus is cleared/rebuilt wholesale on every check, not merged, so a removed
+  // table's stale entry never lingers under a reused index.
+  let matchStatus = $state({}); // index -> {ready, matched?, matchCount?}
+  let matchCheckTimer = null;
+
+  $effect(() => {
+    // Reading key_field_id per table here is what makes this effect re-run on every
+    // selection change — must stay synchronous (no awaits) for Svelte to track it.
+    const payload = tables.map((t) => ({ form_id: t.form_id, key_field_id: t.key_field_id }));
+    if (tables.length < 2) { matchStatus = {}; return; }
+    clearTimeout(matchCheckTimer);
+    matchCheckTimer = setTimeout(async () => {
+      try {
+        matchStatus = await getKeyMatchCheck(payload);
+      } catch (e) {
+        // Non-critical live indicator — a failed check just leaves badges blank.
+      }
+    }, 400);
+  });
 
   function toggleField(name, checked) {
     const next = new Set(selected);
@@ -200,7 +376,7 @@
       calculated_columns: calcCols.filter((c) => c.name && c.formula),
       sort_field: sortField,
       sort_dir: sortDir,
-      joins: [],
+      joins,
     };
   }
 
@@ -253,6 +429,7 @@
             ? q.column_order
             : (q.selected_fields || []).map((f) => ({ label: f, alias: '' }));
           filters = q.filters || [];
+          joins = Array.isArray(q.joins) ? q.joins : [];
           calcCols = q.calculated_columns || [];
           sortField = q.sort_field || '';
           sortDir = q.sort_dir || 'ASC';
@@ -288,22 +465,28 @@
     <div class="ffapi-builder-section">
       <p class="ffapi-section-title"><span class="ffapi-step-num">1</span> Source tables</p>
       <div class="ffapi-table-chips">
-        {#each tables as t}
+        {#each tables as t (t.form_id)}
           <span class="ffapi-chip">
             {formName(t.form_id)} (Form {t.form_id})
             <button type="button" class="ffapi-chip-x" onclick={() => removeTable(t.form_id)} title="Remove">×</button>
           </span>
         {/each}
-        <select onchange={(e) => { addTable(e.target.value); e.target.value = ''; }} style="width:auto; min-width:180px;">
-          <option value="">+ Add table…</option>
-          {#each (boot.forms || []).filter((f) => !tables.some((t) => t.form_id === f.id)) as f}
-            <option value={f.id}>{f.name}</option>
-          {/each}
-        </select>
+        <AddTableSelect
+          options={(boot.forms || []).filter((f) => !tables.some((t) => t.form_id === f.id))}
+          onPick={(formId) => addTable(formId)}
+        />
       </div>
       {#if tables.length > 1}
         <p class="ffapi-hint">Pick the join key field(s) per table below (tick more than one for a composite key).</p>
-        {#each tables as t, ti}
+        <!-- Keyed by form_id: without this, removing a table shifts every later table down
+             one index, and Svelte's unkeyed reconciliation reuses each KeyFieldPicker's DOM/
+             component instance (and its own imperative SlimSelect) for whatever table now
+             occupies that index — so e.g. removing table 2 of 3 fed table 3's data into
+             table 2's already-initialized picker instance instead of mounting a fresh one,
+             and its selection silently came back empty. Keying by form_id ties each picker
+             to its own table so it's destroyed/recreated only when that specific table is
+             added or removed. -->
+        {#each tables as t, ti (t.form_id)}
           <div class="ffapi-key-picker">
             <span class="ffapi-mono ffapi-key-picker-label">{formName(t.form_id)} key:</span>
             <KeyFieldPicker
@@ -311,22 +494,99 @@
               keyFieldIds={t.key_field_id}
               onChange={(ids) => { tables = tables.map((x, i) => (i === ti ? { ...x, key_field_id: ids } : x)); }}
             />
+            {#if t.key_field_id?.length}
+              <span class="ffapi-mono ffapi-muted ffapi-key-signature" title="What this table's key actually matches on — compare against the other table(s)">{keySignature(t)}</span>
+            {/if}
+            {#if ti > 0 && t.key_field_id?.length}
+              {@const st = matchStatus[ti]}
+              {#if st?.ready}
+                <span class="ffapi-match-badge" class:ffapi-match-yes={st.matched} class:ffapi-match-no={!st.matched}
+                  title={st.matched ? `${st.matchCount} distinct key value${st.matchCount === 1 ? '' : 's'} in common with the table(s) above` : 'No rows in common with the table(s) above yet — check the key field(s) and data'}>
+                  {#if st.matched}✓ Matches found{:else}✗ No matches{/if}
+                </span>
+              {:else}
+                <span class="ffapi-match-badge ffapi-match-pending">checking…</span>
+              {/if}
+            {/if}
           </div>
         {/each}
       {/if}
     </div>
 
     <div class="ffapi-builder-section">
+      <p class="ffapi-section-title"><span class="ffapi-step-num">1b</span> Join other saved queries <span class="ffapi-muted" style="font-weight:400; font-size:12px;">— optional</span></p>
+      {#each joins as j, ji}
+        <div class="ffapi-join-row">
+          <select value={j.query_slug} onchange={(e) => updateJoin(ji, { query_slug: e.target.value })}>
+            <option value="">— pick a saved query —</option>
+            {#each (boot.queries || []).filter((q) => q.slug !== querySlug) as q}
+              <option value={q.slug}>{q.label}</option>
+            {/each}
+          </select>
+          {#if j.query_slug}
+            <span class="ffapi-mono ffapi-muted">match my</span>
+            <select value={j.left_key} onchange={(e) => updateJoin(ji, { left_key: e.target.value })}>
+              <option value="">— field —</option>
+              {#each [...allAvailableLabels()] as f}<option value={f}>{f}</option>{/each}
+            </select>
+            <span class="ffapi-mono ffapi-muted">to its</span>
+            <select value={j.right_key} onchange={(e) => updateJoin(ji, { right_key: e.target.value })}>
+              <option value="">— field —</option>
+              {#each joinedQueryFields(j.query_slug) as f}<option value={f}>{f}</option>{/each}
+            </select>
+            <select value={j.match || 'first'} onchange={(e) => updateJoin(ji, { match: e.target.value })}>
+              <option value="first">first match</option>
+              <option value="all">all matches</option>
+              <option value="nearest_before">nearest before (as-of)</option>
+            </select>
+            {#if j.match === 'nearest_before'}
+              <span class="ffapi-mono ffapi-muted">my</span>
+              <select value={j.left_date || ''} onchange={(e) => updateJoin(ji, { left_date: e.target.value })}>
+                <option value="">— date field —</option>
+                {#each [...allAvailableLabels()] as f}<option value={f}>{f}</option>{/each}
+              </select>
+              <span class="ffapi-mono ffapi-muted">on/before its</span>
+              <select value={j.right_date || ''} onchange={(e) => updateJoin(ji, { right_date: e.target.value })}>
+                <option value="">— date field —</option>
+                {#each joinedQueryFields(j.query_slug) as f}<option value={f}>{f}</option>{/each}
+              </select>
+              <span class="ffapi-mono ffapi-muted">tie-break by its</span>
+              <select value={j.right_time || ''} onchange={(e) => updateJoin(ji, { right_time: e.target.value })}>
+                <option value="">— time field (optional) —</option>
+                {#each joinedQueryFields(j.query_slug) as f}<option value={f}>{f}</option>{/each}
+              </select>
+              <span class="ffapi-mono ffapi-muted">flag if older than</span>
+              <input
+                type="number" min="0" step="1" placeholder="no limit" class="ffapi-mono"
+                style="width:70px;"
+                value={j.max_gap_days ?? ''}
+                onchange={(e) => updateJoin(ji, { max_gap_days: e.target.value ? Number(e.target.value) : undefined })}
+              />
+              <span class="ffapi-mono ffapi-muted">day(s)</span>
+            {/if}
+          {/if}
+          <button type="button" class="ffapi-row-remove" onclick={() => removeJoin(ji)} title="Remove join">×</button>
+        </div>
+      {/each}
+      <button class="ffapi-btn ffapi-btn-sm ffapi-btn-ghost" onclick={addJoin}>+ Add join</button>
+      {#if joins.length}
+        <p class="ffapi-hint">Joined columns appear in step 2 below, grouped under 🔗 the joined query's name — tick the ones you want. "Nearest before" matches on the key field(s) but, among rows sharing that key, picks the one whose date field is the latest value not later than your own date field — for data with no reliable shared key at all, only a "this always happens before that" ordering guarantee.</p>
+      {/if}
+    </div>
+
+    <div class="ffapi-builder-section">
       <p class="ffapi-section-title"><span class="ffapi-step-num">2</span> Fields <span class="ffapi-muted" style="font-weight:400; font-size:12px;">— {selected.size} selected</span></p>
       <div class="ffapi-field-groups">
-        {#each [...groupedFields()] as [gId, group]}
+        {#each [...groupedFields()] as [gId, group] (gId)}
           {@const groupKey = 'form-' + gId}
           {@const checkedCount = group.fields.filter((f) => selected.has(f.name)).length}
           <div class="ffapi-field-group" class:collapsed={collapsedGroups.has(groupKey)}>
             <div class="ffapi-field-group-head" role="button" tabindex="0"
               onclick={() => toggleGroup(groupKey)}
               onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleGroup(groupKey)}>
-              <span class="ffapi-fg-name">{group.name} <span class="ffapi-form-id">Form {gId}</span></span>
+              <span class="ffapi-fg-name">
+                {#if group.isJoin}🔗 {group.name}{:else}{group.name} <span class="ffapi-form-id">Form {gId}</span>{/if}
+              </span>
               <span class="ffapi-fg-meta">
                 <button type="button" class="ffapi-select-all-btn"
                   onclick={(e) => { e.stopPropagation(); selectAllInGroup(group.fields, checkedCount < group.fields.length); }}
@@ -413,8 +673,17 @@
             <option value="<=">&lt;=</option>
             <option value="not_empty">is not empty</option>
             <option value="is_empty">is empty</option>
+            <option value="date_equals">date is</option>
+            <option value="date_before">date is before</option>
+            <option value="date_after">date is after</option>
+            <option value="date_on_or_before">date is on or before</option>
+            <option value="date_on_or_after">date is on or after</option>
           </select>
-          <input type="text" bind:value={f.value} disabled={f.operator === 'not_empty' || f.operator === 'is_empty'} placeholder="value" />
+          {#if DATE_OPERATORS.includes(f.operator)}
+            <input type="date" bind:value={f.value} />
+          {:else}
+            <input type="text" bind:value={f.value} disabled={f.operator === 'not_empty' || f.operator === 'is_empty'} placeholder="value" />
+          {/if}
           <button class="ffapi-row-remove" onclick={() => removeFilter(i)} title="Remove filter">×</button>
         </div>
       {/each}
@@ -492,8 +761,23 @@
   }
   .ffapi-chip-x:hover { color: var(--ffapi-danger); }
 
+  .ffapi-join-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px;
+    padding: 10px; background: var(--ffapi-surface-sunken); border: 1px solid var(--ffapi-border);
+    border-radius: var(--ffapi-radius-base);
+  }
+  .ffapi-join-row select { width: auto; font-size: 12.5px; padding: 5px 8px; }
+
   .ffapi-key-picker { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .ffapi-key-picker-label { font-size: 12px; width: 160px; flex: none; }
+  .ffapi-key-signature { font-size: 12px; word-break: break-word; }
+  .ffapi-match-badge {
+    font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; flex: none;
+    white-space: nowrap;
+  }
+  .ffapi-match-yes { color: var(--ffapi-success); background: color-mix(in srgb, var(--ffapi-success) 14%, transparent); }
+  .ffapi-match-no { color: var(--ffapi-danger); background: color-mix(in srgb, var(--ffapi-danger) 14%, transparent); }
+  .ffapi-match-pending { color: var(--ffapi-text-muted); }
 
   .ffapi-builder-actions { display: flex; justify-content: flex-end; gap: 8px; }
 

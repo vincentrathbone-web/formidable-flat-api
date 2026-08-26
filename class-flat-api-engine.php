@@ -18,6 +18,12 @@ class Formidable_Flat_API_Engine {
      * from their corresponding frm_items IDs.
      */
     public static function item_system_field_definitions( int $form_id, bool $ids_only = false ): array {
+        // v3.1.1: six rarely-used system fields (User/status ids duplicated by their
+        // resolved counterparts, plus Entry Key/Name/Description) were dropped from the
+        // picker to cut clutter. A saved query already referencing one by its plain label
+        // (the normal case since v2.10.4) keeps working unaffected; only the legacy
+        // "Form X: <label>" qualified form is affected, since is_item_system_key() no
+        // longer recognizes these six for prefix-stripping purposes.
         $definitions = [
             [ 'label' => 'Created Date',    'source_column' => 'created_at',     'value_kind' => 'direct' ],
             [ 'label' => 'Updated Date',    'source_column' => 'updated_at',     'value_kind' => 'direct' ],
@@ -151,9 +157,33 @@ class Formidable_Flat_API_Engine {
      * checkbox/key-selector state without erroring).
      */
     public static function normalize_legacy_labels( array $query ): array {
-        $strip_prefix = function( $lbl ) {
+        // Query-to-query joins (apply_query_joins()/merge_joined()) disambiguate a
+        // colliding column by prefixing it with the JOINED QUERY'S OWN label — e.g.
+        // "Pump Issuing with Before Flowrates: Avg Before Flowrate (mL/min)" — which uses
+        // the exact same "X: Y" syntax as the legacy "Form Name: Field Name" pattern this
+        // function exists to strip. Without this guard, a genuinely joined, deliberately
+        // disambiguated column got silently collapsed back down to the SAME plain name as
+        // the base column it was disambiguated from, on every single run — meaning column
+        // pruning below reads whichever of the two ends up last in row-key order, not
+        // necessarily (and in the case that surfaced this bug, NOT) the one the user
+        // actually selected in the builder. Any label starting with one of this query's
+        // own configured join labels is left untouched; only genuine legacy labels (whose
+        // prefix is never a saved query's own label) still get stripped.
+        $join_prefixes = [];
+        foreach ( (array) ( $query['joins'] ?? [] ) as $j ) {
+            if ( ! is_array( $j ) ) continue;
+            $slug = trim( (string) ( $j['query_slug'] ?? '' ) );
+            if ( $slug === '' ) continue;
+            $jq = self::find_saved_query( $slug );
+            if ( $jq ) $join_prefixes[] = trim( (string) ( $jq['label'] ?? $slug ) ) . ': ';
+        }
+
+        $strip_prefix = function( $lbl ) use ( $join_prefixes ) {
             if ( ! is_string( $lbl ) ) return $lbl;
             if ( self::is_item_system_key( $lbl ) ) return $lbl;
+            foreach ( $join_prefixes as $jp ) {
+                if ( strpos( $lbl, $jp ) === 0 ) return $lbl;
+            }
             $pos = strpos( $lbl, ': ' );
             return $pos !== false ? substr( $lbl, $pos + 2 ) : $lbl;
         };
@@ -205,8 +235,18 @@ class Formidable_Flat_API_Engine {
         if ( count( $tables ) === 1 ) {
             $rows = self::fetch_form_rows( (int) $tables[0]['form_id'], $include_drafts, $selected );
         } else {
-            $form_ids = array_map( fn($t) => (int) $t['form_id'],      $tables );
-            $key_fids = array_map( fn($t) => (int) $t['key_field_id'], $tables );
+            $form_ids = array_map( fn($t) => (int) $t['form_id'], $tables );
+            // A composite key stores key_field_id as an array — PHP's (int) cast on a
+            // non-empty array silently returns 1, not an error, so a naive `(int) $kf`
+            // here collapsed every composite key down to "field 1" before
+            // fetch_merged_rows() ever saw it, merging on a meaningless field instead of
+            // the real key and always returning zero rows. Preserve the array shape
+            // (int-casting each element, same as fetch_merged_rows()'s own
+            // array_map('intval', ...) normalization) and only scalar-cast a single key.
+            $key_fids = array_map( function( $t ) {
+                $kf = $t['key_field_id'] ?? 0;
+                return is_array( $kf ) ? array_values( array_map( 'intval', $kf ) ) : (int) $kf;
+            }, $tables );
             $rows     = self::fetch_merged_rows( $form_ids, $key_fids, $include_drafts );
         }
 
@@ -243,6 +283,16 @@ class Formidable_Flat_API_Engine {
                         'contains'  => stripos( $cell, $val ) !== false,
                         'not_empty' => $cell !== '',
                         'is_empty'  => $cell === '',
+                        // Date-specific operators, backed by a date picker in the builder (not a
+                        // free-text value) — see date_op() for why these exist separately from
+                        // the generic >/</etc above rather than reusing them: a raw string/numeric
+                        // comparison on an unparseable "date" would silently produce a misleading
+                        // pass/fail instead of excluding the row.
+                        'date_equals'      => self::date_op( '=',  $cell, $val ),
+                        'date_before'      => self::date_op( '<',  $cell, $val ),
+                        'date_after'       => self::date_op( '>',  $cell, $val ),
+                        'date_on_or_before'=> self::date_op( '<=', $cell, $val ),
+                        'date_on_or_after' => self::date_op( '>=', $cell, $val ),
                         default     => true,
                     };
                     if ( ! $pass ) return false;
@@ -392,7 +442,9 @@ class Formidable_Flat_API_Engine {
     /**
      * Join other saved queries into the current row set.
      *
-     * Each join is: [ 'query_slug', 'left_key', 'right_key', 'match' => 'first'|'all' ].
+     * Each join is: [ 'query_slug', 'left_key', 'right_key', 'match' => 'first'|'all'|
+     * 'nearest_before', 'left_date', 'right_date', 'right_time' (optional),
+     * 'max_gap_days' (optional) ].
      *
      * Semantics, deliberately kept simple and predictable:
      *  - LEFT JOIN: a base row with no match is KEPT (its joined columns are simply absent),
@@ -401,6 +453,16 @@ class Formidable_Flat_API_Engine {
      *    per sample). Row count is unchanged.
      *  - match=all: emit one output row per match — the 1:many case (e.g. pollutant results,
      *    which have several rows per sample). Row count grows.
+     *  - match=nearest_before: an "as-of" join, not an equi-join — for data that has no shared
+     *    ID at all (e.g. a pump is pre-calibrated alone, with no sample attached yet, then
+     *    issued with whatever sample needs it days later). Matches on `left_key`/`right_key`
+     *    (e.g. Pump) same as the other modes, but among the matches for that key, picks the one
+     *    whose `right_date` is the LATEST value that is still <= the base row's `left_date`
+     *    (e.g. a pump issued Monday with no calibration that day uses the most recent EARLIER
+     *    calibration — Friday's — never a later one). See merge_nearest_before() for the reason
+     *    a match wasn't found always being recorded on the row (rather than left ambiguous),
+     *    since a blank cell alone doesn't say whether nothing matched, or nothing was ever
+     *    captured to compare against.
      *  - Column collisions: the base row wins; the incoming column is prefixed with the joined
      *    query's label ("Post-weights: Sample ID"). Nothing is ever overwritten or lost.
      *  - Keys are matched case-insensitively with whitespace collapsed, because the same sample
@@ -410,11 +472,25 @@ class Formidable_Flat_API_Engine {
         foreach ( $joins as $j ) {
             if ( ! is_array( $j ) ) continue;
 
-            $slug  = trim( (string) ( $j['query_slug'] ?? '' ) );
-            $lkey  = trim( (string) ( $j['left_key']   ?? '' ) );
-            $rkey  = trim( (string) ( $j['right_key']  ?? '' ) );
-            $mode  = ( ( $j['match'] ?? 'first' ) === 'all' ) ? 'all' : 'first';
+            $slug     = trim( (string) ( $j['query_slug'] ?? '' ) );
+            $lkey     = trim( (string) ( $j['left_key']   ?? '' ) );
+            $rkey     = trim( (string) ( $j['right_key']  ?? '' ) );
+            $raw_mode = (string) ( $j['match'] ?? 'first' );
+            $mode     = in_array( $raw_mode, [ 'all', 'nearest_before' ], true ) ? $raw_mode : 'first';
             if ( $slug === '' || $lkey === '' || $rkey === '' ) continue;
+
+            $ldate = trim( (string) ( $j['left_date']  ?? '' ) );
+            $rdate = trim( (string) ( $j['right_date'] ?? '' ) );
+            if ( $mode === 'nearest_before' && ( $ldate === '' || $rdate === '' ) ) continue;
+            // Optional: a time-of-day field on the joined side, for breaking ties when more than
+            // one candidate shares the winning date (see apply_nearest_before_join()). Absent by
+            // default — existing nearest_before joins configured before this was added keep their
+            // prior (date-only) tie-break behavior unchanged.
+            $rtime = trim( (string) ( $j['right_time'] ?? '' ) );
+            // Optional: reject (flag instead of silently use) a candidate whose date is more than
+            // this many days before the anchor — 0/absent means no cutoff, matching every
+            // nearest_before join configured before this was added.
+            $max_gap_days = max( 0, (int) ( $j['max_gap_days'] ?? 0 ) );
 
             // Cycle / runaway-nesting guards. Skipping (rather than dying) keeps a bad config
             // from taking the whole site down — the column simply won't appear.
@@ -433,6 +509,11 @@ class Formidable_Flat_API_Engine {
             if ( empty( $right ) ) continue;
 
             $label = trim( (string) ( $jq['label'] ?? $slug ) );
+
+            if ( $mode === 'nearest_before' ) {
+                $rows = self::apply_nearest_before_join( $rows, $right, $lkey, $rkey, $ldate, $rdate, $label, $rtime, $max_gap_days );
+                continue;
+            }
 
             // Index the joined rows by their key.
             $idx = [];
@@ -461,6 +542,157 @@ class Formidable_Flat_API_Engine {
         }
 
         return $rows;
+    }
+
+    /**
+     * The 'nearest_before' join mode: for each base row, find — among joined rows sharing the
+     * same `$lkey`/`$rkey` value — the one whose `$rdate` is the latest value not after the base
+     * row's own `$ldate`. Always 1:1 in row count (like match=first), never emits more than one
+     * matched row per base row.
+     *
+     * Every base row gets a `"{label} Match"` column, always present so a blank result is never
+     * ambiguous between "matched, nothing else to say" and "genuinely couldn't find one" — see
+     * the reason strings below, which distinguish a key with literally no candidates at all from
+     * one where every candidate's date falls after the anchor (both real, different situations
+     * worth being able to tell apart when auditing a report).
+     *
+     * `$rtime` (optional) names a time-of-day field on the joined side — when a pump has more
+     * than one calibration on the same winning date, this breaks the tie by picking the latest
+     * time that day (the calibration closest to actual use) instead of an arbitrary array-order
+     * pick. The anchor/candidate comparison itself always stays at date granularity (same
+     * calendar day always counts as "on or before") — only candidates already tied on date are
+     * reordered by time, so this can never turn an otherwise-matching same-day candidate into a
+     * non-match.
+     *
+     * `$max_gap_days` (optional, 0 = no limit) rejects — flags via `$match_col` instead of
+     * silently using — a best candidate whose date is more than this many days before the
+     * anchor. Exists for a real, rare case: a pump reused after sitting idle long enough that
+     * its last known calibration may no longer reflect its actual state (e.g. one sample used a
+     * calibration 6 days old because nothing closer existed) — technically the correct answer
+     * given the data, but a site may want it surfaced for review rather than used silently.
+     */
+    private static function apply_nearest_before_join(
+        array $rows, array $right, string $lkey, string $rkey, string $ldate, string $rdate, string $label,
+        string $rtime = '', int $max_gap_days = 0
+    ): array {
+        $match_col = $label . ' Match';
+
+        // Group candidates by key, keeping only rows with a genuinely parseable right_date —
+        // an unparseable date on the candidate side can never legitimately win a comparison, so
+        // excluding it here (rather than having it silently sort first/last) keeps the search
+        // itself simple: every candidate considered has a real timestamp to compare against.
+        // Dates are normalized to a clean midnight timestamp (date portion only) regardless of
+        // whether the stored value happens to carry a time component — time-of-day, if any, is
+        // handled separately below via $rtime, never mixed into the date comparison itself.
+        $groups = [];
+        foreach ( $right as $rr ) {
+            if ( ! is_array( $rr ) ) continue;
+            $k = self::join_key( $rr[ $rkey ] ?? '' );
+            if ( $k === '' ) continue;
+            $raw_date = trim( (string) ( $rr[ $rdate ] ?? '' ) );
+            if ( $raw_date === '' ) continue;
+            $ts = strtotime( $raw_date );
+            if ( $ts === false ) continue;
+            $date_ts = strtotime( date( 'Y-m-d', $ts ) );
+
+            $time_minutes = -1; // sorts before any real time — same-date candidates with no
+                                 // parseable time keep their relative order among each other,
+                                 // but never outrank one with a genuine, later time-of-day.
+            if ( $rtime !== '' ) {
+                $raw_time = trim( (string) ( $rr[ $rtime ] ?? '' ) );
+                if ( $raw_time !== '' && preg_match( '/^(\d{1,2}):(\d{2})/', $raw_time, $m ) ) {
+                    $time_minutes = ( (int) $m[1] ) * 60 + (int) $m[2];
+                }
+            }
+
+            $groups[ $k ][] = [ $date_ts, $time_minutes, $rr ];
+        }
+        foreach ( $groups as $k => &$g ) {
+            usort( $g, fn( $a, $b ) => $a[0] <=> $b[0] ?: $a[1] <=> $b[1] );
+        }
+        unset( $g );
+
+        $out = [];
+        foreach ( $rows as $row ) {
+            $k = self::join_key( $row[ $lkey ] ?? '' );
+            if ( $k === '' || ! isset( $groups[ $k ] ) ) {
+                $row[ $match_col ] = 'No match: no ' . $label . ' entries for this ' . $lkey;
+                $out[] = $row;
+                continue;
+            }
+
+            $raw_anchor = trim( (string) ( $row[ $ldate ] ?? '' ) );
+            $anchor_ts  = ( $raw_anchor !== '' ) ? strtotime( $raw_anchor ) : false;
+            if ( $anchor_ts === false ) {
+                $row[ $match_col ] = 'No match: missing or unreadable ' . $ldate;
+                $out[] = $row;
+                continue;
+            }
+            $anchor_date_ts = strtotime( date( 'Y-m-d', $anchor_ts ) );
+
+            // Candidates are sorted ascending by (date, time-of-day) — walk backward from the
+            // end and take the first (i.e. latest) one whose date isn't after the anchor's own
+            // date. Group sizes here are realistically small (one form's rows for a single
+            // shared key value, e.g. one pump's calibration history), so a linear scan is
+            // simpler than a binary search for no meaningful cost.
+            $best = null; $best_date_ts = null;
+            for ( $i = count( $groups[ $k ] ) - 1; $i >= 0; $i-- ) {
+                if ( $groups[ $k ][ $i ][0] <= $anchor_date_ts ) {
+                    $best         = $groups[ $k ][ $i ][2];
+                    $best_date_ts = $groups[ $k ][ $i ][0];
+                    break;
+                }
+            }
+
+            if ( $best === null ) {
+                $row[ $match_col ] = 'No match: no ' . $label . ' on or before ' . $raw_anchor;
+                $out[] = $row;
+                continue;
+            }
+
+            if ( $max_gap_days > 0 ) {
+                $gap_days = (int) round( ( $anchor_date_ts - $best_date_ts ) / DAY_IN_SECONDS );
+                if ( $gap_days > $max_gap_days ) {
+                    $row[ $match_col ] = 'No match: nearest ' . $label . ' was ' . $gap_days .
+                        ' day' . ( $gap_days === 1 ? '' : 's' ) . ' before ' . $raw_anchor .
+                        ', older than the ' . $max_gap_days . '-day limit';
+                    $out[] = $row;
+                    continue;
+                }
+            }
+
+            $merged = self::merge_joined( $row, $best, $label );
+            $merged[ $match_col ] = '';
+            $out[] = $merged;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Date-specific filter comparison (used by the 'date_equals'/'date_before'/'date_after'/
+     * 'date_on_or_before'/'date_on_or_after' filter operators, backed by a date picker in the
+     * builder rather than a free-text value). Both sides are normalized to a date-only
+     * timestamp before comparing — same technique as the nearest_before join's own date
+     * handling — so a stored value with a time component, or a differently-formatted date
+     * string, still compares correctly by calendar day. Either side failing to parse as a date
+     * makes the filter not match, rather than falling back to a string/numeric comparison that
+     * could produce a misleading result for a value that isn't really a date.
+     */
+    private static function date_op( string $op, string $cell, string $val ): bool {
+        $cell_ts = strtotime( trim( $cell ) );
+        $val_ts  = strtotime( trim( $val ) );
+        if ( $cell_ts === false || $val_ts === false ) return false;
+        $cell_day = strtotime( date( 'Y-m-d', $cell_ts ) );
+        $val_day  = strtotime( date( 'Y-m-d', $val_ts ) );
+        return match ( $op ) {
+            '='  => $cell_day === $val_day,
+            '<'  => $cell_day <  $val_day,
+            '>'  => $cell_day >  $val_day,
+            '<=' => $cell_day <= $val_day,
+            '>=' => $cell_day >= $val_day,
+            default => false,
+        };
     }
 
     /** Normalised join key — case-insensitive, whitespace-collapsed. */
@@ -701,12 +933,17 @@ class Formidable_Flat_API_Engine {
         global $wpdb;
         $parent_form_id = 0;
 
+        // A form can never legitimately be its own parent (misconfigured
+        // parent_form_id, or a repeater divider whose form_select points back at its
+        // own containing form) — guard both lookup methods against that, since
+        // treating a form as its own parent would merge its own fields/metadata into
+        // the row a second time.
         // Method 1: direct parent_form_id column
         $direct = (int) $wpdb->get_var( $wpdb->prepare(
             "SELECT parent_form_id FROM {$wpdb->prefix}frm_forms WHERE id = %d",
             $child_form_id
         ) );
-        if ( $direct > 0 ) {
+        if ( $direct > 0 && $direct !== $child_form_id ) {
             $parent_form_id = $direct;
         }
 
@@ -720,7 +957,7 @@ class Formidable_Flat_API_Engine {
                  LIMIT 1",
                 '%s:4:"form_select";i:' . $child_form_id . ';%'
             ) );
-            if ( $rp ) $parent_form_id = (int) $rp;
+            if ( $rp && (int) $rp !== $child_form_id ) $parent_form_id = (int) $rp;
         }
 
         if ( $parent_form_id <= 0 ) return null;
@@ -1049,6 +1286,113 @@ class Formidable_Flat_API_Engine {
             }
         }
         return $expanded_rows;
+    }
+
+    /**
+     * Distinct normalized composite join-keys a single table's rows actually
+     * resolve to, for the query builder's live "matches found" indicator —
+     * lets the picker tell the user whether two tables' key fields will match
+     * anything before they run a full preview, without waiting on
+     * fetch_merged_rows()'s full multi-table column assembly. Mirrors that
+     * method's own key-resolution chain exactly (current row metas → child-form
+     * parent metas → grandparent metas, normalized via join_key()) so a "yes,
+     * these match" here is guaranteed to mean the same thing the real merge
+     * would produce; it just skips building every output column.
+     */
+    public static function distinct_join_keys( int $form_id, array $key_fid_list ): array {
+        global $wpdb;
+        $key_fid_list = array_values( array_filter( array_map( 'intval', $key_fid_list ) ) );
+        if ( empty( $key_fid_list ) ) return [];
+
+        $repeater_map = [];
+        $all_fields   = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, type, field_options FROM {$wpdb->prefix}frm_fields WHERE form_id = %d",
+            $form_id
+        ) );
+        foreach ( $all_fields as $f ) {
+            if ( $f->type === 'divider' ) {
+                $f_opts = maybe_unserialize( $f->field_options );
+                if ( isset( $f_opts['repeat'] ) && $f_opts['repeat'] == '1' ) {
+                    $repeater_map[ (int) $f->id ] = (int) $f_opts['form_select'];
+                }
+            }
+        }
+
+        $parent_ctx = self::get_parent_form_context( $form_id );
+
+        $entries = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, parent_item_id, is_draft FROM {$wpdb->prefix}frm_items WHERE form_id = %d AND is_draft = 0 ORDER BY id ASC",
+            $form_id
+        ), ARRAY_A );
+        if ( empty( $entries ) ) return [];
+
+        $id_list      = implode( ',', array_column( $entries, 'id' ) );
+        $metas_raw    = $wpdb->get_results( "SELECT item_id, field_id, meta_value FROM {$wpdb->prefix}frm_item_metas WHERE item_id IN ($id_list)", ARRAY_A );
+        $parent_metas = [];
+        $all_c_ids    = [];
+        $parent_item_map = [];
+        foreach ( $entries as $e ) $parent_item_map[$e['id']] = (int) $e['parent_item_id'];
+        foreach ( $metas_raw as $m ) {
+            $val = maybe_unserialize( $m['meta_value'] );
+            $parent_metas[ $m['item_id'] ][ (int) $m['field_id'] ] = $val;
+            if ( isset( $repeater_map[ (int) $m['field_id'] ] ) && is_array( $val ) ) {
+                $all_c_ids = array_merge( $all_c_ids, $val );
+            }
+        }
+
+        $child_metas = [];
+        if ( ! empty( $all_c_ids ) ) {
+            $c_id_list = implode( ',', array_map( 'intval', array_filter( $all_c_ids ) ) );
+            $cm_raw    = $wpdb->get_results( "SELECT item_id, field_id, meta_value FROM {$wpdb->prefix}frm_item_metas WHERE item_id IN ($c_id_list)", ARRAY_A );
+            foreach ( $cm_raw as $cm ) {
+                $child_metas[ $cm['item_id'] ][ (int) $cm['field_id'] ] = maybe_unserialize( $cm['meta_value'] );
+            }
+        }
+
+        $parent_form_metas = [];
+        if ( $parent_ctx ) {
+            $uniq_pids         = array_unique( array_filter( array_values( $parent_item_map ) ) );
+            $parent_form_metas = self::load_parent_metas( $uniq_pids, $parent_ctx['field_map'] );
+        }
+
+        $keys = [];
+        foreach ( $entries as $e ) {
+            $p_id = $e['id'];
+            $rows = []; $has_r = false;
+            foreach ( $repeater_map as $rfid => $cfid ) {
+                if ( isset( $parent_metas[$p_id][$rfid] ) && is_array( $parent_metas[$p_id][$rfid] ) ) {
+                    foreach ( $parent_metas[$p_id][$rfid] as $cid ) { $rows[] = [ 'type' => 'child', 'id' => $cid ]; $has_r = true; }
+                }
+            }
+            if ( ! $has_r ) $rows[] = [ 'type' => 'parent', 'id' => $p_id ];
+
+            foreach ( $rows as $proc ) {
+                $isc   = ( $proc['type'] === 'child' );
+                $cur_m = $isc ? ( $child_metas[$proc['id']] ?? [] ) : ( $parent_metas[$p_id] ?? [] );
+                $parent_pid = $parent_item_map[$p_id] ?? 0;
+
+                $sk_parts_norm = [];
+                $sk_has_empty  = false;
+                foreach ( $key_fid_list as $kfid ) {
+                    if ( isset( $cur_m[$kfid] ) ) {
+                        $raw = $cur_m[$kfid];
+                    } elseif ( isset( $parent_metas[$p_id][$kfid] ) ) {
+                        $raw = $parent_metas[$p_id][$kfid];
+                    } elseif ( $parent_ctx && $parent_pid > 0 && isset( $parent_form_metas[$parent_pid][$kfid] ) ) {
+                        $raw = $parent_form_metas[$parent_pid][$kfid];
+                    } else {
+                        $raw = '';
+                    }
+                    if ( is_array( $raw ) ) $raw = implode( ', ', $raw );
+                    $part = trim( (string) $raw );
+                    if ( $part === '' ) { $sk_has_empty = true; break; }
+                    $sk_parts_norm[] = self::join_key( $part );
+                }
+                if ( $sk_has_empty || empty( $sk_parts_norm ) ) continue;
+                $keys[ implode( '||', $sk_parts_norm ) ] = true;
+            }
+        }
+        return array_keys( $keys );
     }
 
     /**

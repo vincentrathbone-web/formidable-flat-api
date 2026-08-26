@@ -39,18 +39,28 @@ is a straight port of the old inline formula tokenizer/evaluator (still the clie
 mirror of `class-formula-builder.php`, used only for the live calc-formula tester — never
 to compute real report data).
 
-**Backend surface is unchanged**: the Svelte app calls the exact same `admin-ajax.php`/
-`admin-post.php` endpoints (`ffapi_get_form_fields`, `ffapi_preview_query`,
-`ffapi_load_query`, and the save/delete/duplicate/regenerate-key/save-font-size/save-theme
-admin-post actions) with the same nonce names. **Nonce gap closed (post-launch fix):**
-`ajax_get_form_fields`, `ajax_preview_query`, and `ajax_load_query` originally shipped
-with no `check_ajax_referer()` nonce check (relying solely on the WP session +
-`current_user_can('manage_options')`) — a single shared `ffapi_builder` nonce
-(`boot.nonces.builder`) was added and is now verified in all three handlers, sent as the
-`nonce` param by `admin-src/src/lib/api.js`'s `getJson()`/`postJson()` helpers.
+The Svelte app calls `admin-ajax.php`/`admin-post.php` endpoints (`ffapi_get_form_fields`,
+`ffapi_preview_query`, `ffapi_load_query`, `ffapi_key_value_samples`,
+`ffapi_key_match_check`, and the save/delete/duplicate/regenerate-key/save-font-size/
+save-theme admin-post actions), all behind a single shared `ffapi_builder` nonce
+(`boot.nonces.builder`), sent as the `nonce` param by `admin-src/src/lib/api.js`'s
+`getJson()`/`postJson()` helpers. `ffapi_key_value_samples` (up to 3 real sample values
+for a join-key field) and `ffapi_key_match_check` (live "Matches found" indicator,
+backed by `Formidable_Flat_API_Engine::distinct_join_keys()`) power the Query Builder's
+join key-picker — see "Query→query joins" below.
 
 DMR Reports/Sample Pipeline are unaffected — they're separate plugins with their own
 admin pages, not part of this rebuild.
+
+**`enqueue_assets()`'s hook check is suffix-matched, not exact-matched — keep it that
+way.** It gates on `substr($hook, -strlen($suffix)) === '_page_formidable-flat-api'`
+rather than a hardcoded full hook string. WordPress derives the hook *prefix* from
+Formidable's own top-level menu registration, not from the literal `'formidable'` parent
+slug this plugin passes to `add_submenu_page()` — different Formidable Forms Core
+versions have been observed producing `formidable_page_...` on some installs and
+`formidable-1_page_...` on others (a menu-slug collision on Formidable's side). An exact
+string match silently breaks the admin UI (mount div stays empty, `window.ffapiAdmin`
+never populates, no PHP error at all) on any install where the prefix differs.
 
 ## Packaging & release workflow
 
@@ -81,7 +91,7 @@ The PHP classes and their roles:
 - **`class-flat-api-rest.php`** — `Formidable_Flat_API_REST`. Registers REST routes under `formidable-flat/v1`: `/form/{id}`, `/view/{id}`, `/merged/{form_ids}/{key_field_ids}` (comma-separated, counts must match), `/query/{slug}`. All callbacks are thin wrappers over the engine. (The `/report` route moved to the DMR Reports plugin in v2.29.0 — same namespace/path, registered from `class-dmr-rest.php` there instead.)
 - **`class-formula-builder.php`** — `Formidable_Flat_Formula_Builder`. Calculated-columns UI + evaluator. **Security-critical:** formulas are evaluated with a hand-written tokenizer → shunting-yard → RPN evaluator. **Never** introduce `eval()`/`create_function()` here — the no-eval guarantee is what makes saved formulas safe. Supports `[Field Name]` refs, `+ - * /`, unary minus, parens, numeric literals; coerces currency strings like `"R 1,234.56"` to numbers.
 - **`class-xlsx-writer.php`** — `Formidable_Flat_XLSX_Writer`. Dependency-free `.xlsx` generation (raw OOXML, no PhpSpreadsheet).
-- **`class-flat-api-admin.php`** — `Formidable_Flat_API_Admin`. Owns the wp-admin page under **Formidable → Flat API**: menu registration, the admin AJAX handlers the Svelte UI calls (`ajax_get_form_fields`, `ajax_preview_query`, `ajax_load_query`), save/delete/duplicate/regenerate-key/font-size/theme admin-post handlers, and `enqueue_assets()` (builds the `window.ffapiAdmin` bootstrap payload and localizes it onto the built admin script). `render_page()` itself is now just the Svelte mount point — see "Admin UI build step" above for where the actual UI lives. (The `dmr`/`canonical` tabs moved to the DMR Reports plugin's own admin page in v2.29.0.)
+- **`class-flat-api-admin.php`** — `Formidable_Flat_API_Admin`. Owns the wp-admin page under **Formidable → Flat API**: menu registration, the admin AJAX handlers the Svelte UI calls (`ajax_get_form_fields`, `ajax_preview_query`, `ajax_load_query`, `ajax_key_value_samples`, `ajax_key_match_check`), save/delete/duplicate/regenerate-key/font-size/theme admin-post handlers, and `enqueue_assets()` (builds the `window.ffapiAdmin` bootstrap payload and localizes it onto the built admin script). `render_page()` itself is now just the Svelte mount point — see "Admin UI build step" above for where the actual UI lives. (The `dmr`/`canonical` tabs moved to the DMR Reports plugin's own admin page in v2.29.0.)
 
 ## Split: DMR Reports plugin (v2.29.0)
 
@@ -124,11 +134,21 @@ Saved queries live in the WP option `formidable_flat_saved_queries` (constant `F
 
 ```php
 [ 'slug', 'label', 'tables' => [ ['form_id', 'key_field_id'] ],
-  'joins' => [ ['query_slug','left_key','right_key','match'] ],   // v2.27.0+
+  'joins' => [ ['query_slug','left_key','right_key','match',      // v2.27.0+
+                'left_date','right_date','right_time','max_gap_days'] ], // match:nearest_before only
   'selected_fields' => [labels], 'column_order' => [ ['label','alias'] ],
   'filters' => [ ['field','operator','value'] ], 'sort_field', 'sort_dir',
   'calculated_columns' => [ ['name','formula'] ], 'saved_at' ]
 ```
+
+`operator` is one of `= != > >= < <= contains not_empty is_empty` (generic string/numeric
+compare) or `date_equals date_before date_after date_on_or_before date_on_or_after`
+(day-granularity comparison via `date_op()` — both sides parsed with `strtotime()` and
+truncated to midnight before comparing, so a stored value with a time component or a
+different date format still compares correctly by calendar day; either side failing to
+parse makes the filter not match rather than falling back to a misleading string compare).
+Allowlisted in `class-flat-api-admin.php`'s `sanitize_filter_operator()` — extend that
+list, not just the engine's `match()`, when adding a new operator.
 
 `key_field_id` is a scalar for a single key or an array for a composite key (joined with `||` in `fetch_merged_rows`). The same query object flows unchanged through REST, shortcodes, and admin exports — there is one canonical execution path (`run_saved_query`), so a change there affects every output format.
 
@@ -141,6 +161,7 @@ Applied in `run_saved_query` by `apply_query_joins()` **immediately after the fe
 Rules — deliberately simple, and mirrored in the builder JS so the field picker shows the real column names the query will produce:
 - **LEFT JOIN**: an unmatched base row is *kept*. A join can never silently delete rows.
 - `match: 'first'` (1:1, e.g. post-weights per sample) leaves the row count unchanged; `match: 'all'` (1:many, e.g. several pollutant results per sample) emits one row per match.
+- `match: 'nearest_before'` — an **"as-of" join**, not an equi-join, for data with no shared ID at all (e.g. a pump calibrated alone with no sample attached yet, issued days later to whatever sample needs it). Matches on `left_key`/`right_key` same as the other modes, but among same-key candidates picks the one whose `right_date` is the **latest value on or before** the base row's own `left_date` (never a later one — calibration always precedes use). Implemented in `apply_nearest_before_join()`, always 1:1 in row count like `match: 'first'`. Every base row gets a `"{label} Match"` column, always present (never blank-and-ambiguous) explaining *why* nothing matched when nothing did — no candidates for that key at all vs. every candidate's date falling after the anchor are different, both real situations worth telling apart. `right_time` (optional) breaks ties when more than one candidate shares the winning date — only reorders same-date candidates, can never turn an otherwise-matching same-day candidate into a non-match. `max_gap_days` (optional, 0/absent = no limit) **flags** (via the Match column) rather than silently uses a best candidate whose date is more than N days before the anchor — a real, rare case where the nearest available calibration may be stale enough to want surfaced for review.
 - **Nothing is overwritten**: a joined column whose name collides with an existing one comes in prefixed with the joined query's label (`Post-weights: Sample ID`). Collisions are checked against the base row *and any earlier join*, because the engine merges into the accumulating row.
 - Keys are matched **case-insensitively, whitespace-collapsed** (`join_key()`) — the same sample id is rarely typed identically across two forms.
 - Guards: a query can't join itself (excluded from the picker), cycles are detected via `$join_stack`, and the chain is depth-capped (`MAX_JOIN_DEPTH = 3`). A bad config is skipped, never fatal.
@@ -164,3 +185,5 @@ Defined in `formidable-flat-api.php`: `FRM_FLAT_PATH`, `FRM_FLAT_VERSION`, and t
 - **No external PHP dependencies** — XLSX and formula evaluation are deliberately self-contained. Keep it that way.
 - Each class file carries its own `File:` / `Version:` docblock header; these per-file versions drift from the plugin version and are not part of the release bump.
 - User-facing reference docs live in `PLUGIN.md` (comprehensive) and `README.md` (changelog-style highlights). Update them when changing user-visible behavior.
+- **`KeyFieldPicker.svelte` must stay on Slim Select (`slim-select` npm package), not `svelte-multiselect`.** It was originally built on `svelte-multiselect`'s `bind:selected`, which raced against an `$effect` re-deriving `selected` from props: a click fired `onChange`, the parent wrote back a new `key_field_id`, and the resulting prop update re-ran the effect — sometimes overwriting the in-progress click before it stuck. Rebuilt on Slim Select instead, driven imperatively (own the instance, push data/selection into it, only react to its `afterChange` event) specifically to remove that race. `keepOrder: true` matters too — for a composite key, pick order is meaningful (the engine concatenates each table's key field values in `key_field_id`'s array order), so don't let it default-sort the display.
+- **A whole release cycle (v3.1.1) was once built from a stale base and silently shipped without this file's fix, the `nearest_before` join, the `date_*` filter operators, and the key-picker's sample-preview/match-check AJAX endpoints** — all real, already-validated-in-production features that just vanished with no error, discovered only when a user reported "date filtering stopped working." A plugin version number bump is not proof the new version is a superset of the old one — if you're about to treat a higher-numbered branch/tag as authoritative, diff it against the last known-good state first rather than assuming.

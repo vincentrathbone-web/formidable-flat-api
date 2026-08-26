@@ -36,9 +36,11 @@ class Formidable_Flat_API_Admin {
         // The DMR snapshot/lock/stats-export and canonical-mapping admin_post/wp_ajax
         // registrations moved to the DMR Reports plugin (class-dmr-admin.php) in v2.29.0.
 
-        add_action( 'wp_ajax_ffapi_get_form_fields',   [ $this, 'ajax_get_form_fields' ] );
-        add_action( 'wp_ajax_ffapi_preview_query',     [ $this, 'ajax_preview_query' ] );
-        add_action( 'wp_ajax_ffapi_load_query',        [ $this, 'ajax_load_query' ] );
+        add_action( 'wp_ajax_ffapi_get_form_fields',    [ $this, 'ajax_get_form_fields' ] );
+        add_action( 'wp_ajax_ffapi_preview_query',      [ $this, 'ajax_preview_query' ] );
+        add_action( 'wp_ajax_ffapi_load_query',         [ $this, 'ajax_load_query' ] );
+        add_action( 'wp_ajax_ffapi_key_value_samples',  [ $this, 'ajax_key_value_samples' ] );
+        add_action( 'wp_ajax_ffapi_key_match_check',    [ $this, 'ajax_key_match_check' ] );
 
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
     }
@@ -52,7 +54,16 @@ class Formidable_Flat_API_Admin {
      * time render_page() runs, get_option() is guaranteed to return a real key.
      */
     public function enqueue_assets( $hook ) {
-        if ( 'formidable_page_formidable-flat-api' !== $hook ) return;
+        // WordPress derives the hook prefix from Formidable's own top-level menu
+        // registration (get_plugin_page_hookname()), not from the literal 'formidable'
+        // parent slug this plugin passes to add_submenu_page() — so it isn't guaranteed
+        // to always be exactly 'formidable'. Different Formidable Forms Core versions
+        // have been observed producing 'formidable-1_page_...' instead of
+        // 'formidable_page_...' when their own menu registration collides with ours.
+        // Match on the suffix we actually control (our own menu_slug) rather than the
+        // full hardcoded prefix, so this keeps working regardless of Formidable's side.
+        $suffix = '_page_formidable-flat-api';
+        if ( substr( $hook, -strlen( $suffix ) ) !== $suffix ) return;
         global $wpdb;
 
         $api_key = get_option( $this->option_key );
@@ -163,7 +174,12 @@ class Formidable_Flat_API_Admin {
             "SELECT parent_form_id FROM {$wpdb->prefix}frm_forms WHERE id = %d",
             $form_id
         ) );
-        if ( $direct_parent > 0 ) {
+        // A form can never legitimately be its own parent — guard against that here
+        // (misconfigured parent_form_id / a repeater divider whose form_select points
+        // back at its own containing form) rather than in the picker, since it would
+        // otherwise list this form's own fields twice: once as "self", once as
+        // "parent", with identical numeric field ids.
+        if ( $direct_parent > 0 && $direct_parent !== $form_id ) {
             $parent_form_ids[] = $direct_parent;
         }
 
@@ -177,7 +193,10 @@ class Formidable_Flat_API_Admin {
         ) );
         if ( ! empty( $repeater_parents ) ) {
             foreach ( $repeater_parents as $rp ) {
-                $parent_form_ids[] = (int) $rp;
+                $rp = (int) $rp;
+                if ( $rp !== $form_id ) {
+                    $parent_form_ids[] = $rp;
+                }
             }
         }
 
@@ -221,6 +240,101 @@ class Formidable_Flat_API_Admin {
         $append_system_fields( $form_id, $self_name, 0, ! empty( $parent_form_ids ) );
 
         wp_send_json_success( $fields );
+    }
+
+    // ============================================================
+    // AJAX: Sample real values for a join-key field (builder key-picker preview)
+    // ============================================================
+    /**
+     * Returns up to 3 real, non-empty entry values for one field, so the
+     * Query Builder can show what a join key actually resolves to (e.g.
+     * "Pump123, Pump456, Pump678") instead of just its label — the label alone
+     * doesn't tell you whether two tables' key fields will actually match any
+     * rows. `form_id` is the field's OWN form — for a parent field pulled into
+     * a child/repeater table's picker (from_parent: 1 in ajax_get_form_fields),
+     * that is the parent form's id, which the picker already tracks per field,
+     * so this naturally samples the right table without needing to replicate
+     * fetch_merged_rows()'s full parent/repeater resolution chain here.
+     */
+    public function ajax_key_value_samples() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
+        check_ajax_referer( 'ffapi_builder', 'nonce' );
+        global $wpdb;
+        $form_id  = (int) ( $_GET['form_id'] ?? 0 );
+        $field_id = (int) ( $_GET['field_id'] ?? 0 );
+        if ( $form_id <= 0 || $field_id <= 0 ) wp_send_json_success( [] );
+
+        // Over-fetch, since some values may be empty after trimming — stop once we
+        // have 3 non-empty samples or run out of rows.
+        $raw_values = $wpdb->get_col( $wpdb->prepare(
+            "SELECT im.meta_value
+             FROM {$wpdb->prefix}frm_item_metas im
+             INNER JOIN {$wpdb->prefix}frm_items i ON i.id = im.item_id
+             WHERE i.form_id = %d AND im.field_id = %d AND i.is_draft = 0
+             ORDER BY i.id ASC
+             LIMIT 30",
+            $form_id, $field_id
+        ) );
+
+        $samples = [];
+        foreach ( $raw_values as $raw ) {
+            $val = maybe_unserialize( $raw );
+            if ( is_array( $val ) ) $val = implode( ', ', $val );
+            $val = trim( (string) $val );
+            if ( $val === '' ) continue;
+            $samples[] = $val;
+            if ( count( $samples ) >= 3 ) break;
+        }
+        wp_send_json_success( $samples );
+    }
+
+    // ============================================================
+    // AJAX: Live join-key match check (builder key-picker "Matches found" indicator)
+    // ============================================================
+    /**
+     * For each table (from the 2nd one on), reports whether its join key
+     * actually matches any row already contributed by the earlier tables — so
+     * the builder can show a green "Matches found" / red "No matches" next to
+     * a table's key picker while the user is still selecting fields, instead
+     * of only finding out after scrolling down and clicking Preview. Reuses
+     * Formidable_Flat_API_Engine::distinct_join_keys(), which mirrors
+     * fetch_merged_rows()'s own key-resolution chain exactly, so this reflects
+     * what a real join would do rather than an approximation.
+     */
+    public function ajax_key_match_check() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
+        check_ajax_referer( 'ffapi_builder', 'nonce' );
+
+        $tables = json_decode( stripslashes( $_POST['tables_json'] ?? '' ), true );
+        if ( ! is_array( $tables ) ) wp_send_json_error( 'Invalid tables' );
+
+        $key_sets = [];
+        foreach ( $tables as $i => $t ) {
+            $form_id = (int) ( $t['form_id'] ?? 0 );
+            $raw_kf  = $t['key_field_id'] ?? [];
+            $kf_list = is_array( $raw_kf ) ? $raw_kf : ( $raw_kf ? [ $raw_kf ] : [] );
+            if ( $form_id <= 0 || empty( $kf_list ) ) {
+                $key_sets[$i] = null; // not enough info yet to check this table
+                continue;
+            }
+            $key_sets[$i] = Formidable_Flat_API_Engine::distinct_join_keys( $form_id, $kf_list );
+        }
+
+        $result = [];
+        $union_so_far = [];
+        foreach ( $key_sets as $i => $keys ) {
+            if ( $keys === null ) {
+                $result[$i] = [ 'ready' => false ];
+            } elseif ( $i === 0 ) {
+                $result[$i] = [ 'ready' => false ]; // nothing earlier to compare the first table against
+            } else {
+                $matched = count( array_intersect( $keys, $union_so_far ) );
+                $result[$i] = [ 'ready' => true, 'matched' => $matched > 0, 'matchCount' => $matched ];
+            }
+            if ( is_array( $keys ) ) $union_so_far = array_unique( array_merge( $union_so_far, $keys ) );
+        }
+
+        wp_send_json_success( $result );
     }
 
     // ============================================================
@@ -412,7 +526,13 @@ class Formidable_Flat_API_Admin {
             }
         }
 
-        // Joined saved queries: [ { query_slug, left_key, right_key, match } ]
+        // Joined saved queries: [ { query_slug, left_key, right_key, match, left_date?, right_date? } ].
+        // 'match' predates 'nearest_before' (class-flat-api-engine.php's apply_query_joins()) —
+        // this whitelist previously only recognized 'first'/'all' and silently coerced anything
+        // else to 'first', and dropped left_date/right_date entirely, since neither existed when
+        // this was written. That meant a nearest_before join saved via a hand-edited option (the
+        // only way to configure one before the builder UI existed) would silently downgrade to a
+        // broken equi-join the next time the query was opened and saved in the admin.
         $joins = [];
         foreach ( (array) ( $d['joins'] ?? [] ) as $j ) {
             if ( ! is_array( $j ) ) continue;
@@ -420,12 +540,31 @@ class Formidable_Flat_API_Admin {
             $lk = sanitize_text_field( (string) ( $j['left_key']  ?? '' ) );
             $rk = sanitize_text_field( (string) ( $j['right_key'] ?? '' ) );
             if ( $qs === '' || $lk === '' || $rk === '' ) continue;
-            $joins[] = [
+            $raw_match = (string) ( $j['match'] ?? 'first' );
+            $match     = in_array( $raw_match, [ 'all', 'nearest_before' ], true ) ? $raw_match : 'first';
+            $entry = [
                 'query_slug' => $qs,
                 'left_key'   => $lk,
                 'right_key'  => $rk,
-                'match'      => ( ( $j['match'] ?? 'first' ) === 'all' ) ? 'all' : 'first',
+                'match'      => $match,
             ];
+            if ( $match === 'nearest_before' ) {
+                $ldate = sanitize_text_field( (string) ( $j['left_date']  ?? '' ) );
+                $rdate = sanitize_text_field( (string) ( $j['right_date'] ?? '' ) );
+                if ( $ldate === '' || $rdate === '' ) continue; // incomplete config — drop rather than save a broken join
+                $entry['left_date']  = $ldate;
+                $entry['right_date'] = $rdate;
+                // Optional: breaks ties when more than one candidate shares the winning date —
+                // see apply_nearest_before_join(). Genuinely optional, unlike the dates above:
+                // an empty value just keeps the prior date-only tie-break, not a broken join.
+                $rtime = sanitize_text_field( (string) ( $j['right_time'] ?? '' ) );
+                if ( $rtime !== '' ) $entry['right_time'] = $rtime;
+                // Optional: flags (rather than silently uses) a match older than N days — see
+                // apply_nearest_before_join(). 0/absent means no cutoff, same as before this existed.
+                $max_gap_days = max( 0, (int) ( $j['max_gap_days'] ?? 0 ) );
+                if ( $max_gap_days > 0 ) $entry['max_gap_days'] = $max_gap_days;
+            }
+            $joins[] = $entry;
         }
 
         $sort_dir = strtoupper( (string) ( $d['sort_dir'] ?? 'ASC' ) );
@@ -544,7 +683,10 @@ class Formidable_Flat_API_Admin {
      * into an empty string. Allowlist against the exact set the builder UI offers instead.
      */
     private static function sanitize_filter_operator( $op ) {
-        $allowed = [ '=', '!=', '>', '>=', '<', '<=', 'contains', 'not_empty', 'is_empty' ];
+        $allowed = [
+            '=', '!=', '>', '>=', '<', '<=', 'contains', 'not_empty', 'is_empty',
+            'date_equals', 'date_before', 'date_after', 'date_on_or_before', 'date_on_or_after',
+        ];
         $op = trim( (string) $op );
         return in_array( $op, $allowed, true ) ? $op : '=';
     }

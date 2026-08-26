@@ -1,6 +1,6 @@
 # Formidable Flat API
 
-![Version](https://img.shields.io/badge/version-3.1.1-blue)
+![Version](https://img.shields.io/badge/version-3.1.2-blue)
 ![WordPress](https://img.shields.io/badge/WordPress-5.8%2B-21759B?logo=wordpress&logoColor=white)
 ![PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4?logo=php&logoColor=white)
 ![Formidable Forms](https://img.shields.io/badge/Formidable%20Forms-5.0%2B-orange)
@@ -60,7 +60,7 @@ The admin UI itself — Saved Queries, Query Builder, a legacy Endpoint Builder 
 
 - **Visual Query Builder** — pick source forms, fields, filters, joins, calculated columns, and sort order visually; one saved definition powers every REST endpoint, shortcode, and export.
 - **Automatic repeater flattening** — one row per child entry, parent fields copied across.
-- **Multi-form joins** — merge forms on a shared key field, or join saved queries to each other (`first`/`all` match modes, LEFT JOIN semantics — a join never silently drops a row).
+- **Multi-form joins** — merge forms on a shared key field, or join saved queries to each other (`first`/`all`/`nearest_before` match modes, LEFT JOIN semantics — a join never silently drops a row).
 - **Saved, reusable queries** — field selection, column order/aliases, filters, sort, joins, and calculated columns defined once, reused across REST, shortcodes, and every export format.
 - **Calculated columns** — a server-side formula engine (arithmetic, text concatenation, `ROUND`/`ABS`/`MIN`/`MAX`/`SUM`/`CONCAT`/etc.) with no `eval()`, ever.
 - **CSV, XLSX, and print exports** — one click, no external PHP libraries required for XLSX.
@@ -81,7 +81,7 @@ They're not mutually exclusive — a site can run both: the official API for two
 | **Primary use case** | Flat, spreadsheet-ready data export & reporting | General-purpose REST CRUD + outbound webhooks |
 | **Repeater/child-entry flattening** | ✅ Automatic — one row per child entry, parent fields copied across | ❌ Returned as raw nested JSON, keyed by field ID; flattening left to you |
 | **Field names in the response** | ✅ Real field labels, straight out of the box | ❌ Numeric field IDs — a second request against the fields endpoint is required just to label columns |
-| **Multi-form joins** | ✅ Merge by shared key field (`/merged/...`), plus query-to-query joins with `first`/`all` match modes | ❌ Not built in — fetch each form separately and join client-side |
+| **Multi-form joins** | ✅ Merge by shared key field (`/merged/...`), plus query-to-query joins with `first`/`all`/`nearest_before` (as-of) match modes | ❌ Not built in — fetch each form separately and join client-side |
 | **Saved, reusable queries** | ✅ Named queries: field selection, column order/alias, filters, sort, joins, calc columns — one definition, reused everywhere | ❌ No concept of a saved query; every request repeats its own args |
 | **Calculated columns** | ✅ Server-side formula engine, no `eval()` | ❌ Not available |
 | **Deprecated/unused fields** | ✅ You choose exactly which fields appear — nothing stale leaks through | ❌ Every field ever added to the form shows up in every entry's meta, used or not |

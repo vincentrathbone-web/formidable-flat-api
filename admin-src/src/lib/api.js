@@ -44,6 +44,22 @@ export function getFormFields(formId) {
   return getJson('ffapi_get_form_fields', { form_id: formId });
 }
 
+// Up to 3 real sample values for one join-key field, used by the Query Builder's
+// key-picker preview so a mismatched composite key is visible before running the
+// query, instead of only discovering it from an empty preview.
+export function getKeyValueSamples(formId, fieldId) {
+  return getJson('ffapi_key_value_samples', { form_id: formId, field_id: fieldId });
+}
+
+// Given the builder's current `tables` (form_id + key_field_id per table), reports
+// per-table (from the 2nd one on) whether its join key matches any row already
+// contributed by the earlier tables — powers the key-picker's live "Matches found"
+// indicator. Uses postJson (not a query string) since `tables` can carry composite
+// key_field_id arrays.
+export function getKeyMatchCheck(tables) {
+  return postJson('ffapi_key_match_check', { tables_json: JSON.stringify(tables) });
+}
+
 export function previewQuery(queryDef, limit) {
   return postJson('ffapi_preview_query', {
     query_json: JSON.stringify(queryDef),

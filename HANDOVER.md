@@ -1,6 +1,6 @@
 # HANDOVER — Formidable Flat API
 
-**v3.1.1** · Last updated 2026-08-21
+**v3.1.2** · Last updated 2026-08-26
 
 ---
 
@@ -23,7 +23,9 @@ assets/                         Frontend button/table CSS + JS
 
 **Saved queries** are stored in the WP option `formidable_flat_saved_queries`. `run_saved_query()` is the single execution path for all output formats — a change there affects everything.
 
-**Query→query joins** are LEFT JOINs applied before filter/sort/calc, capped at depth 3, with cycle detection.
+**Query→query joins** are LEFT JOINs applied before filter/sort/calc, capped at depth 3, with cycle detection. Three match modes: `first` (1:1), `all` (1:many), `nearest_before` (as-of join on a key + latest-date-on-or-before match — see `apply_nearest_before_join()`).
+
+**Filters** support 9 generic operators (`= != > >= < <= contains not_empty is_empty`) plus 5 date-aware ones (`date_equals date_before date_after date_on_or_before date_on_or_after`) that compare by calendar day via `date_op()`.
 
 **Formula evaluator** — PHP is authoritative; `admin-src/src/lib/formula.js` mirrors it for the browser preview only. Never introduce `eval()` or `create_function()`.
 
@@ -63,6 +65,10 @@ npm run build     # run after any admin source change and before packaging
 
 Built output goes to `dist/` (committed). `admin-src/` is excluded from release ZIPs. The PHP/Svelte contract is `window.ffapiAdmin`, assembled in `enqueue_assets()` — check every consuming component when changing it.
 
+`enqueue_assets()`'s `$hook` check is a **suffix** match (`_page_formidable-flat-api`), not an exact string — different Formidable Forms Core versions have produced different hook prefixes (`formidable_page_...` vs `formidable-1_page_...`). Breaking this silently empties the admin mount point with no PHP error.
+
+`KeyFieldPicker.svelte` runs on **Slim Select**, not `svelte-multiselect` — the latter has a click/prop-update race that was already hit and fixed once. Don't reintroduce it.
+
 ---
 
 ## Testing checklist
@@ -73,8 +79,8 @@ Built output goes to `dist/` (committed). `admin-src/` is excluded from release 
 
 **Before a release, verify end-to-end:**
 - Single-form query · View query · merged query · composite key
-- Query-to-query join (`first` and `all`)
-- Filters · natural sort · aliases · column ordering
+- Query-to-query join (`first`, `all`, and `nearest_before` with a real date-anchored match)
+- Filters (including the `date_*` operators) · natural sort · aliases · column ordering
 - Chained calculated columns
 - All output formats: REST JSON, CSV, XLSX, print, frontend table
 - Admin: Edit existing query, Preview, Save, Export menu, nonce-failure behaviour
@@ -82,6 +88,13 @@ Built output goes to `dist/` (committed). `admin-src/` is excluded from release 
 ---
 
 ## Release workflow
+
+**Before bumping a version number, diff the working tree against the last known-good
+release** (git tag or ZIP), not just against whatever branch happens to be checked out.
+v3.1.1 was built from a stale base and silently shipped without the `nearest_before`
+join, the `date_*` filter operators, the key-picker's sample-preview/match-check
+endpoints, and the Slim Select fix above — all real, already-in-production features that
+just vanished with no error. A higher version number is not proof of a superset diff.
 
 1. Build `admin-src/` if its source changed.
 2. Bump the version in: `package.ps1`, `formidable-flat-api.php` (header + `FRM_FLAT_VERSION`), `PLUGIN.md`.

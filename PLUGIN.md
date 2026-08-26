@@ -1,6 +1,6 @@
 # Formidable Flat API — Reference
 
-**v3.1.1** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
+**v3.1.2** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
 
 ---
 
@@ -62,13 +62,23 @@ Go to **Formidable → Flat API → New Query**.
 1. **Source** — add one or more forms. For a multi-form merge, pick the shared key field on each form.
 2. **Fields** — tick what to include. Use **Select all / Deselect all** per group.
 3. **Column order** — drag to reorder; set output aliases.
-4. **Filters** — AND-logic row filters. Operators: `=` `!=` `>` `>=` `<` `<=` `contains` `not_empty` `is_empty`.
+4. **Filters** — AND-logic row filters. Operators: `=` `!=` `>` `>=` `<` `<=` `contains` `not_empty` `is_empty`, plus five date-aware operators — `date is` `date is before` `date is after` `date is on or before` `date is on or after` — that compare by calendar day regardless of any time component or string-format difference between the stored value and the filter value.
 5. **Calculated columns** — see below.
 6. **Sort** — any output column, natural sort order.
 
 The slug is auto-generated from the name as you type. Duplicate slugs are auto-suffixed on save.
 
-**Query→query joins:** in step 1 you can also pull in another saved query's output columns matched on a shared column. `match: first` keeps row count unchanged; `match: all` expands one base row per matched row. Unmatched base rows are always kept (LEFT JOIN). Keys match case-insensitively.
+**Query→query joins:** in step 1 you can also pull in another saved query's output columns matched on a shared column, or merge multiple forms directly. Once a table's key field(s) are set, a live sample-value preview (up to 3 real values) and a server-checked "Matches found ✓ / No matches ✗" indicator appear next to its picker — so a key mismatch is visible before you ever click Preview.
+
+Three match modes:
+
+| Mode | Behaviour |
+|------|-----------|
+| `first` | 1:1 — row count unchanged. |
+| `all` | 1:many — one output row per match; row count grows. |
+| `nearest_before` | An "as-of" join for data with no shared ID — matches on a key plus finds, among candidates sharing that key, the one whose date is the latest value on or before the base row's own date (e.g. matching a sample to the most recent calibration that precedes it). Optional time-of-day tie-break when more than one candidate shares the winning date, and an optional `max_gap_days` staleness cutoff that flags — never silently drops — a match older than the configured window. |
+
+Unmatched base rows are always kept (LEFT JOIN — a join never deletes rows). Keys match case-insensitively, whitespace collapsed.
 
 ---
 
@@ -125,6 +135,12 @@ Both require a logged-in WordPress session. Theme tokens are CSS variables on `.
 ---
 
 ## Changelog
+
+### 3.1.2
+- Fixed: 3.1.1 was built from an outdated base and silently dropped several features already validated in production use — restored: the five `date_*` filter operators, the `nearest_before` "as-of" join match mode (with optional time-of-day tie-break and `max_gap_days` staleness cutoff), the join key-picker's live sample-value preview and "Matches found" indicator, a composite-key `(int)` cast bug fix (was silently zeroing out multi-field merges), and a self-referential parent-form guard.
+- Fixed: the join key picker is back on Slim Select. 3.1.1 had reverted it to an earlier `svelte-multiselect` implementation with a known click-race condition (a click could be silently overwritten by a competing reactive update).
+- Fixed: the admin page's script-enqueue check matched an exact hardcoded hook string; on some Formidable Forms Core versions WordPress generates a different hook prefix, silently leaving the admin UI unmounted with no error. Now matches by suffix instead, regardless of Formidable's own menu registration.
+- Kept from 3.1.1: the six-field system-field-picker pruning and the Select all/Deselect all per-group buttons.
 
 ### 3.1.1
 - Fixed: selecting only parent-form fields no longer fans out one row per child/repeater entry — the engine now skips repeater expansion when no child-form fields are in the selection.
