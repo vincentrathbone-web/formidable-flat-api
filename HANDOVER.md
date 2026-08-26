@@ -1,6 +1,6 @@
 # HANDOVER — Formidable Flat API
 
-**v3.1.2** · Last updated 2026-08-26
+**v3.2.0** · Last updated 2026-08-26
 
 ---
 
@@ -69,6 +69,31 @@ Built output goes to `dist/` (committed). `admin-src/` is excluded from release 
 
 `KeyFieldPicker.svelte` runs on **Slim Select**, not `svelte-multiselect` — the latter has a click/prop-update race that was already hit and fixed once. Don't reintroduce it.
 
+### Query Builder layout (v3.2.0)
+
+`QueryBuilder.svelte` is a resizable split view, Power BI/Power Query-style: a top
+pane (`.ffapi-split-top`) for building the query, a drag handle (`.ffapi-resize-grip`,
+`startResize()`), and a dominant bottom pane (`.ffapi-preview-zone`) with a live results
+grid. Default split is 2/3 top, 1/3 bottom (`topHeight` state, `window.innerHeight * 2/3`
+on first load; a `userResized` flag stops the auto-sizing effect from fighting a manual
+drag).
+
+The preview is **auto-live**, not click-to-run: a debounced `$effect` (~600ms) rebuilds
+and reruns the query as you edit. Because Svelte 5's `$effect` only tracks what it
+synchronously reads, the effect does `void JSON.stringify(def)` to force a deep read —
+without that, edits to an existing filter/join/calc-column's value (`bind:value` on an
+array item) don't retrigger it. Preview defaults to **100 rows** (`previewQuery(def, 100)`).
+The preview toolbar (`.ffapi-preview-toolbar`) has two buttons side by side: "↻ Refresh
+now" (immediate, un-debounced rerun) and "Save Query" (same `save()` handler as the
+header button — added so you don't have to scroll back up to save).
+
+Typography is capped at **two sizes only** across this component and `tokens.css`:
+13px for body/label content, 11px for captions/hints/mono code. If a new element needs
+a third size, that's a sign it should reuse an existing class rather than get its own
+`font-size` declaration — check `tokens.css` first, since several shared classes
+(`.ffapi-hint`, `.ffapi-btn-sm`, `.ffapi-card-head p`) live there and a local override
+in `QueryBuilder.svelte` can still lose to a more-specific shared selector.
+
 ---
 
 ## Testing checklist
@@ -83,7 +108,7 @@ Built output goes to `dist/` (committed). `admin-src/` is excluded from release 
 - Filters (including the `date_*` operators) · natural sort · aliases · column ordering
 - Chained calculated columns
 - All output formats: REST JSON, CSV, XLSX, print, frontend table
-- Admin: Edit existing query, Preview, Save, Export menu, nonce-failure behaviour
+- Admin: Edit existing query, live preview auto-updates on edit (and "Refresh now" reruns it immediately), Save (both the header button and the preview-toolbar one), Export menu, nonce-failure behaviour
 
 ---
 
