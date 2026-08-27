@@ -68,17 +68,33 @@ class Formidable_Flat_API_Engine {
     }
 
     /**
+     * Human-readable label for an frm_items.is_draft value. 0 and 1 are Formidable core's
+     * own SUBMITTED_ENTRY_STATUS / DRAFT_ENTRY_STATUS constants (FrmEntriesHelper) — every
+     * normal, fully-submitted entry is 0, which is the overwhelming majority of rows in any
+     * real form. 2 (Abandoned) is a status this plugin has observed on Pro installs (partial
+     * entries) that the free Formidable Forms core never defines. Any other value is shown
+     * as its raw number rather than silently blanked: previously 0 fell through to '', so
+     * every ordinary submitted entry's status column looked empty — indistinguishable from a
+     * genuinely missing value, and easy to mistake for "this field doesn't work" rather than
+     * "this is what a normal entry's status looks like."
+     */
+    private static function draft_status_label( int $status_val ): string {
+        return match ( $status_val ) {
+            0       => 'Submitted',
+            1       => 'Draft',
+            2       => 'Abandoned',
+            default => 'Status ' . $status_val,
+        };
+    }
+
+    /**
      * Build all source-qualified metadata values from one source form entry.
      * No frm_item_metas timestamps or repeater-child item rows are consulted.
      */
     private static function item_system_values( array $entry, int $form_id, array $user_name_map ): array {
         $created_uid = (int) ( $entry['user_id'] ?? 0 );
         $updated_uid = (int) ( $entry['updated_by'] ?? 0 );
-        $status      = match ( (int) ( $entry['is_draft'] ?? 0 ) ) {
-            1       => 'Draft',
-            2       => 'Abandoned',
-            default => '',
-        };
+        $status      = self::draft_status_label( (int) ( $entry['is_draft'] ?? 0 ) );
 
         $values = [
             'Created Date'        => (string) ( $entry['created_at'] ?? '' ),
@@ -972,11 +988,7 @@ class Formidable_Flat_API_Engine {
                 }
 
                 $status_val = max( $p_status, $c_status );
-                $status_label = match( $status_val ) {
-                    1 => 'Draft',
-                    2 => 'Abandoned',
-                    default => '',
-                };
+                $status_label = self::draft_status_label( $status_val );
 
                 // Last Modified By / Created by / Updated date: prefer the child entry's own
                 // value when this is a repeater row, fall back to the parent entry's.
@@ -1337,11 +1349,7 @@ class Formidable_Flat_API_Engine {
                 }
 
                 $status_val = max( $p_status, $c_status );
-                $status_label = match( $status_val ) {
-                    1 => 'Draft',
-                    2 => 'Abandoned',
-                    default => '',
-                };
+                $status_label = self::draft_status_label( $status_val );
 
                 $uid = ( $c_id !== 0 && ! empty( $child_updated_by_map[$c_id] ) )
                        ? $child_updated_by_map[$c_id]
@@ -1700,11 +1708,7 @@ class Formidable_Flat_API_Engine {
                     $sk_display = implode( '||', $sk_parts );
 
                     $status_val = max( $p_status, $c_status );
-                    $status_label = match( $status_val ) {
-                        1 => 'Draft',
-                        2 => 'Abandoned',
-                        default => '',
-                    };
+                    $status_label = self::draft_status_label( $status_val );
 
                     if ( ! isset( $master_data[$sk] ) ) {
                         $master_data[$sk] = [
