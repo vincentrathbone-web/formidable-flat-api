@@ -59,7 +59,7 @@ Select **Anonymous** when Excel prompts for credentials — the key travels in `
 
 Go to **Formidable → Flat API → New Query**.
 
-1. **Source** — add one or more forms. For a multi-form merge, pick the shared key field on each form.
+1. **Source** — add one or more forms. For a multi-form merge, pick the shared key field on each form. With 2+ tables, a "Keeping" dropdown appears below the key pickers — `full outer` (default, unchanged from before this existed — every row from every table, matched or not), `inner` (a key must exist in every table), `left` (every row from the first table), or `right` (every row from the last table).
 2. **Fields** — tick what to include. Use **Select all / Deselect all** per group.
 3. **Column order** — drag to reorder; set output aliases.
 4. **Filters** — AND-logic row filters. Operators: `=` `!=` `>` `>=` `<` `<=` `contains` `not_empty` `is_empty`, plus five date-aware operators — `date is` `date is before` `date is after` `date is on or before` `date is on or after` — that compare by calendar day regardless of any time component or string-format difference between the stored value and the filter value.

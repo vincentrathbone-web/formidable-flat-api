@@ -284,7 +284,12 @@ class Formidable_Flat_API_Engine {
                 $kf = $t['key_field_id'] ?? 0;
                 return is_array( $kf ) ? array_values( array_map( 'intval', $kf ) ) : (int) $kf;
             }, $tables );
-            $rows     = self::fetch_merged_rows( $form_ids, $key_fids, $include_drafts );
+            // Which rows survive the source-tables merge — default 'full' (every row
+            // from every table, matched or not) preserves every saved query's existing
+            // behavior from before this setting existed.
+            $raw_tables_join_type = (string) ( $query['tables_join_type'] ?? 'full' );
+            $tables_join_type = in_array( $raw_tables_join_type, [ 'inner', 'left', 'right' ], true ) ? $raw_tables_join_type : 'full';
+            $rows     = self::fetch_merged_rows( $form_ids, $key_fids, $include_drafts, $tables_join_type );
         }
 
         if ( $track_counts ) $stage_counts['source'] = count( $rows );
@@ -1514,11 +1519,16 @@ class Formidable_Flat_API_Engine {
     /**
      * Fetch merged rows across multiple forms
      */
-    public static function fetch_merged_rows( array $form_ids, array $key_fids, bool $include_drafts = false ): array {
+    public static function fetch_merged_rows( array $form_ids, array $key_fids, bool $include_drafts = false, string $join_type = 'full' ): array {
         global $wpdb;
 
         $master_data     = [];
         $column_template = [];
+        // Which of $form_ids (by index) actually contributed a row to each composite key —
+        // used at the end to filter by $join_type. Tracked regardless of $join_type so
+        // 'full' (the historical, still-default behavior: every row from every table is
+        // kept, matched or not) costs nothing extra to support alongside the others.
+        $contributing_tables = [];
 
         foreach ( $form_ids as $index => $form_id ) {
             // key_field_id can be a single int (legacy) or an array (multi-field composite key).
@@ -1717,6 +1727,7 @@ class Formidable_Flat_API_Engine {
                     } elseif ( $status_val > 0 ) {
                         $master_data[$sk]['Draft Status'] = $status_label;
                     }
+                    $contributing_tables[$sk][$index] = true;
 
                     // Source-qualified metadata always comes from this source
                     // form's own frm_items row ($e). It therefore remains stable
@@ -1795,6 +1806,24 @@ class Formidable_Flat_API_Engine {
                     }
                 }
             }
+        }
+
+        // Which composite keys survive depends on $join_type — 'full' (the default,
+        // unchanged from before this existed) keeps every key regardless of which
+        // table(s) actually contributed a row to it. The others require a contribution
+        // from a specific table (or all of them), generalizing the usual 2-table
+        // left/right/inner semantics to $form_ids' left-to-right order for 3+ tables.
+        $last_index = count( $form_ids ) - 1;
+        if ( $join_type !== 'full' ) {
+            $master_data = array_filter( $master_data, function( $row, $sk ) use ( $contributing_tables, $join_type, $last_index ) {
+                $contributed = $contributing_tables[$sk] ?? [];
+                return match ( $join_type ) {
+                    'inner' => count( $contributed ) === $last_index + 1,
+                    'left'  => isset( $contributed[0] ),
+                    'right' => isset( $contributed[$last_index] ),
+                    default => true,
+                };
+            }, ARRAY_FILTER_USE_BOTH );
         }
 
         $merged = array_values( $master_data );

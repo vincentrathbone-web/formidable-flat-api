@@ -134,6 +134,7 @@ Saved queries live in the WP option `formidable_flat_saved_queries` (constant `F
 
 ```php
 [ 'slug', 'label', 'tables' => [ ['form_id', 'key_field_id'] ],
+  'tables_join_type',                                    // v3.3.0 — left|inner|right|full, 2+ tables only
   'joins' => [ ['query_slug','left_key','right_key','match',      // v2.27.0+
                 'join_type',                                      // v3.3.0 — left|inner|right|full, match:first/all only
                 'left_date','right_date','right_time','max_gap_days'] ], // match:nearest_before only
@@ -152,6 +153,8 @@ Allowlisted in `class-flat-api-admin.php`'s `sanitize_filter_operator()` — ext
 list, not just the engine's `match()`, when adding a new operator.
 
 `key_field_id` is a scalar for a single key or an array for a composite key (joined with `||` in `fetch_merged_rows`). The same query object flows unchanged through REST, shortcodes, and admin exports — there is one canonical execution path (`run_saved_query`), so a change there affects every output format.
+
+**`tables_join_type`** (top-level query field, v3.3.0, default `'full'`) controls which rows survive the step-1 multi-table merge itself (2+ tables in `tables`, via `fetch_merged_rows()`) — `full` (unchanged historical behavior: every row from every table, matched or not), `inner` (a composite key must have a contributing row from *every* table), `left` (must contribute from `$form_ids[0]`), `right` (must contribute from the last table). `fetch_merged_rows()` tracks, per composite key, which table indices actually contributed a row (`$contributing_tables[$sk][$index]`) and filters `$master_data` by that at the end — generalizing the usual 2-table left/right/inner semantics to `$form_ids`' left-to-right order for 3+ tables. Only meaningful with 2+ tables; ignored (single-form fetch path) otherwise. Distinct from `joins[]`'s own per-entry `join_type` (query-to-query joins, step 1b) — this one governs the *source-tables* merge instead.
 
 ### Query→query joins (`joins`, v2.27.0)
 

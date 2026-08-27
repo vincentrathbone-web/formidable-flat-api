@@ -26,6 +26,9 @@
   let querySlug = $state('');
   let oldSlug = $state('');
   let tables = $state([]); // [{form_id, key_field_id: number[]}]
+  // Which rows survive the source-tables merge when 2+ tables are used — 'left'|'right'|
+  // 'inner'|'full' (default). Only meaningful with 2+ tables; ignored server-side otherwise.
+  let tablesJoinType = $state('full');
   let fieldsByForm = $state({}); // formId -> [{id,name,form_name,from_parent}]
   let keyValueSamples = $state({}); // "formId:fieldId" -> string[] (up to 3 real sample values, [] once loaded-but-empty)
   let selected = $state(new Set());
@@ -404,6 +407,7 @@
         form_id: t.form_id,
         key_field_id: t.key_field_id.length > 1 ? t.key_field_id : (t.key_field_id[0] ?? 0),
       })),
+      tables_join_type: tablesJoinType,
       selected_fields: Array.from(selected),
       column_order: columnOrder,
       filters,
@@ -489,6 +493,7 @@
             form_id: Number(t.form_id),
             key_field_id: Array.isArray(t.key_field_id) ? t.key_field_id.map(Number) : (t.key_field_id ? [Number(t.key_field_id)] : []),
           }));
+          tablesJoinType = ['inner', 'left', 'right'].includes(q.tables_join_type) ? q.tables_join_type : 'full';
           selected = new Set(q.selected_fields || []);
           columnOrder = q.column_order && q.column_order.length
             ? q.column_order
@@ -629,6 +634,16 @@
               {/if}
             </div>
           {/each}
+          <div class="ffapi-key-picker">
+            <span class="ffapi-mono ffapi-key-picker-label">Keeping:</span>
+            <select value={tablesJoinType} onchange={(e) => (tablesJoinType = e.target.value)} style="width:auto; min-width:260px; flex:none;">
+              <option value="full">everything (full outer) — all rows from every table</option>
+              <option value="inner">only matched rows (inner) — a key must exist in every table</option>
+              <option value="left">all of the first table (left)</option>
+              <option value="right">all of the last table (right)</option>
+            </select>
+            <span class="ffapi-hint" style="margin:0;">Which rows survive when a key exists in some tables but not others.</span>
+          </div>
         {/if}
       </div>
 

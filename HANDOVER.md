@@ -25,6 +25,8 @@ assets/                         Frontend button/table CSS + JS
 
 **Query→query joins** are applied before filter/sort/calc, capped at depth 3, with cycle detection. Three match modes: `first` (1:1), `all` (1:many), `nearest_before` (as-of join on a key + latest-date-on-or-before match — see `apply_nearest_before_join()`). For `first`/`all`, `join_type` (default `left`) picks standard SQL-join semantics — `left`/`inner`/`right`/`full` — for which unmatched rows survive; `nearest_before` is always left/as-of and ignores it. A query can also have **zero source tables** — if `joins` is non-empty, the first join's query supplies the starting rows instead of matching against anything (see `run_saved_query()`), which is what lets two saved queries be combined with no Formidable table involved at all.
 
+**The step-1 source-tables merge** (2+ real Formidable tables in `tables`, via `fetch_merged_rows()`) has its own, separate `tables_join_type` (default `'full'`, same four values as above) — don't confuse it with `joins[]`'s per-entry `join_type`. `fetch_merged_rows()` tracks which table index contributed to each composite key and filters on that at the end.
+
 **Filters** support 9 generic operators (`= != > >= < <= contains not_empty is_empty`) plus 5 date-aware ones (`date_equals date_before date_after date_on_or_before date_on_or_after`) that compare by calendar day via `date_op()`.
 
 **Formula evaluator** — PHP is authoritative; `admin-src/src/lib/formula.js` mirrors it for the browser preview only. Never introduce `eval()` or `create_function()`.

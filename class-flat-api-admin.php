@@ -496,6 +496,12 @@ class Formidable_Flat_API_Admin {
             $tables[] = [ 'form_id' => $fid, 'key_field_id' => $k ];
         }
 
+        // Which rows survive the source-tables merge (step 1) when 2+ tables are used —
+        // see fetch_merged_rows() in class-flat-api-engine.php. Default 'full' matches
+        // every saved query's behavior from before this setting existed.
+        $raw_tables_join_type = (string) ( $d['tables_join_type'] ?? 'full' );
+        $tables_join_type = in_array( $raw_tables_join_type, [ 'inner', 'left', 'right' ], true ) ? $raw_tables_join_type : 'full';
+
         $selected = [];
         foreach ( (array) ( $d['selected_fields'] ?? [] ) as $s ) {
             $s = sanitize_text_field( (string) $s );
@@ -594,6 +600,7 @@ class Formidable_Flat_API_Admin {
 
         return [
             'tables'             => $tables,
+            'tables_join_type'   => $tables_join_type,
             'joins'              => $joins,
             'selected_fields'    => $selected,
             'column_order'       => $column_order,
@@ -625,6 +632,9 @@ class Formidable_Flat_API_Admin {
                 ];
             }
         }
+
+        $raw_tables_join_type = (string) ( $_POST['tables_join_type'] ?? 'full' );
+        $tables_join_type = in_array( $raw_tables_join_type, [ 'inner', 'left', 'right' ], true ) ? $raw_tables_join_type : 'full';
 
         // selected_fields: array of column label strings (checked checkboxes)
         $selected = array_map( 'sanitize_text_field', (array) ( $_POST['selected_fields'] ?? [] ) );
@@ -697,6 +707,7 @@ class Formidable_Flat_API_Admin {
 
         return [
             'tables'             => $tables,
+            'tables_join_type'   => $tables_join_type,
             'joins'              => $joins,
             'selected_fields'    => $selected,
             'column_order'       => $column_order,
