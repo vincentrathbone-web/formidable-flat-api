@@ -1,6 +1,6 @@
 # Formidable Flat API — Reference
 
-**v3.2.2** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
+**v3.3.0** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
 
 ---
 
@@ -146,6 +146,10 @@ Both require a logged-in WordPress session. Theme tokens are CSS variables on `.
 ---
 
 ## Changelog
+
+### 3.3.0
+- Added: the source-tables merge in step 1 (2+ Formidable tables joined on a shared key) now has a "Keeping" dropdown below the key-field pickers — `full outer` (default, unchanged from before this existed — every row from every table, matched or not), `inner` (a key must exist in every table), `left` (every row from the first table), or `right` (every row from the last table).
+- Fixed: the entry status column (`Entry Status` / the legacy `Draft Status`) was blank for every normal, fully-submitted entry — `is_draft = 0` (Formidable's own "Submitted" status, and the status the vast majority of real entries have) mapped to an empty string instead of a label. Since drafts are excluded by default, this meant the status column looked completely non-functional rather than wrong for one value. Now shows `Submitted` / `Draft` / `Abandoned` correctly, with any other status shown as its raw number instead of going blank.
 
 ### 3.2.2
 - Fixed: the "match my" and nearest-before "my" date-field pickers listed every field from every source table and joined query as one flat list, indistinguishable when two sources share a field name (e.g. "Pump" from two different forms). Both now group their options by table/query source.

@@ -3,13 +3,13 @@
  * Plugin Name:       Formidable Flat API
  * Description:       Flat JSON for Power Query with Deep Repeater Merging, Natural Sorting, and Saved Query Builder.
  * Created by:        Controll IT Systems (Pty) Ltd.
- * Version:           3.2.2
+ * Version:           3.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 define( 'FRM_FLAT_PATH',         plugin_dir_path( __FILE__ ) );
-define( 'FRM_FLAT_VERSION',      '3.2.2' );
+define( 'FRM_FLAT_VERSION',      '3.3.0' );
 define( 'FRM_FLAT_OPTION_KEY',   'formidable_flat_api_key' );
 define( 'FRM_FLAT_QUERIES_KEY',  'formidable_flat_saved_queries' );
 define( 'FRM_FLAT_FONT_SIZE_KEY','formidable_flat_print_font_size' );
