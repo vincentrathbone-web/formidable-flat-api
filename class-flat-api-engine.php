@@ -71,10 +71,13 @@ class Formidable_Flat_API_Engine {
      * Human-readable label for an frm_items.is_draft value. 0 and 1 are Formidable core's
      * own SUBMITTED_ENTRY_STATUS / DRAFT_ENTRY_STATUS constants (FrmEntriesHelper) — every
      * normal, fully-submitted entry is 0, which is the overwhelming majority of rows in any
-     * real form. 2 (Abandoned) is a status this plugin has observed on Pro installs (partial
-     * entries) that the free Formidable Forms core never defines. Any other value is shown
-     * as its raw number rather than silently blanked: previously 0 fell through to '', so
-     * every ordinary submitted entry's status column looked empty — indistinguishable from a
+     * real form. 2 and 3 are IN_PROGRESS_ENTRY_STATUS / ABANDONED_ENTRY_STATUS from the
+     * official "Formidable Abandonment" add-on (FrmAbandonmentAppHelper) — confirmed
+     * directly against that add-on's source and against real production data, which is why
+     * this isn't 2 => 'Abandoned' as an earlier version of this mapping guessed (a real bug:
+     * every in-progress entry was mislabeled "Abandoned"). Any other value is shown as its
+     * raw number rather than silently blanked: previously 0 fell through to '', so every
+     * ordinary submitted entry's status column looked empty — indistinguishable from a
      * genuinely missing value, and easy to mistake for "this field doesn't work" rather than
      * "this is what a normal entry's status looks like."
      */
@@ -82,7 +85,8 @@ class Formidable_Flat_API_Engine {
         return match ( $status_val ) {
             0       => 'Submitted',
             1       => 'Draft',
-            2       => 'Abandoned',
+            2       => 'In Progress',
+            3       => 'Abandoned',
             default => 'Status ' . $status_val,
         };
     }

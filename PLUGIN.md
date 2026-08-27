@@ -1,6 +1,6 @@
 # Formidable Flat API — Reference
 
-**v3.3.0** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
+**v3.3.1** · Requires WordPress 5.8+, PHP 7.4+, Formidable Forms 5.0+
 
 ---
 
@@ -146,6 +146,9 @@ Both require a logged-in WordPress session. Theme tokens are CSS variables on `.
 ---
 
 ## Changelog
+
+### 3.3.1
+- Fixed: status codes `2` and `3` were mislabeled `Abandoned`/(a raw number) in v3.3.0. Confirmed directly against the official Formidable Abandonment add-on's source and real production data: `2 = In Progress`, `3 = Abandoned` (not `2 = Abandoned` as previously guessed). Full mapping is now `0 = Submitted`, `1 = Draft`, `2 = In Progress`, `3 = Abandoned`.
 
 ### 3.3.0
 - Added: the source-tables merge in step 1 (2+ Formidable tables joined on a shared key) now has a "Keeping" dropdown below the key-field pickers — `full outer` (default, unchanged from before this existed — every row from every table, matched or not), `inner` (a key must exist in every table), `left` (every row from the first table), or `right` (every row from the last table).
